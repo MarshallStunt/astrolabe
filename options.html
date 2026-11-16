@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Astrolabe Settings</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    body { overflow-y: auto; }
+    .opts { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; display: grid; gap: 18px; position: relative; }
+    .opts header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .opts .card { display: grid; gap: 14px; }
+    .opts label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+    .opts label > input, .opts label > select { color: var(--text); }
+    .keyrow { display: flex; gap: 8px; } .keyrow input { flex: 1; }
+    .status { font-size: 13px; min-height: 18px; } .status.ok { color: var(--good); } .status.bad { color: var(--bad); }
+    .savebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; bottom: 12px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 14px; padding: 12px 16px; box-shadow: 0 12px 30px rgba(0,0,0,.4); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .check { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; } .check input { width: auto; }
+  </style>
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <form class="opts" id="form" method="dialog" autocomplete="off">
+    <header>
+      <div class="brand"><span class="logo">✦</span> Astrolabe Settings</div>
+      <a class="btn ghost" href="app.html">Open Astrolabe →</a>
+    </header>
+
+    <section class="card">
+      <h3>Claude</h3>
+      <label>Anthropic API key
+        <span class="keyrow"><input type="password" name="apiKey" placeholder="sk-ant-…" spellcheck="false"><button type="button" class="btn ghost" id="toggle-key">Show</button></span>
+      </label>
+      <p class="muted small" style="margin:0">Saved only in this browser's extension storage and sent only to api.anthropic.com. Create one at console.anthropic.com → API keys.</p>
+      <div class="grid2">
+        <label>Model<select name="model">
+          <option value="claude-opus-5-5">Claude Opus 5.5 (best)</option>
+          <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (faster)</option>
+          <option value="claude-haiku-5-5">Claude Haiku 5.5 (cheapest)</option>
+        </select></label>
+        <label>Reading depth<select name="effort">
+          <option value="low">Quick</option><option value="medium">Balanced</option><option value="high">Deep</option><option value="xhigh">Very deep</option>
+        </select></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Chart defaults</h3>
+      <div class="grid2">
+        <label>Zodiac<select name="zodiac"><option value="tropical">Tropical</option><option value="sidereal">Sidereal</option></select></label>
+        <label>Ayanamsa (sidereal)<select name="ayanamsa">
+          <option value="lahiri">Lahiri (Chitrapaksha)</option><option value="fagan">Fagan–Bradley</option><option value="raman">Raman</option><option value="krishnamurti">Krishnamurti (KP)</option><option value="yukteshwar">Yukteshwar</option>
+        </select></label>
+        <label>Numerology system<select name="numerology"><option value="pythagorean">Pythagorean</option><option value="chaldean">Chaldean</option></select></label>
+        <span></span>
+        <label>Houses (tropical)<select name="houses" class="houses"></select></label>
+        <label>Houses (sidereal)<select name="siderealHouses" class="houses"></select></label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3>Morning forecast</h3>
+      <label class="check"><input type="checkbox" name="notify"> Show a short daily forecast notification</label>
+      <div class="grid2">
+        <label>Time<input type="time" name="notifyTime" value="08:00"></label>
+        <span></span>
+      </div>
+      <div><div class="muted small" style="margin-bottom:6px">Who to include (none ticked = the person marked “Me”, or the first person)</div><div id="notify-people" class="row"></div></div>
+      <p class="muted small" style="margin:0">Forecasts are prepared whenever Astrolabe is open, two weeks ahead. Chrome must be running at the chosen time.</p>
+    </section>
+
+    <section class="card">
+      <h3>Config file</h3>
+      <p class="muted small" style="margin:0">Save your config to a file to back it up or move it to another computer, then load it here.</p>
+      <label class="check"><input type="checkbox" id="with-key"> Include my API key in the file</label>
+      <label class="check"><input type="checkbox" id="with-data" checked> Include people and conversations</label>
+      <div class="row">
+        <button type="button" class="btn" id="export">Save config to file…</button>
+        <label class="btn ghost" style="display:inline-flex;color:var(--text)">Load config from file…<input type="file" id="import" accept="application/json,.json" hidden></label>
+      </div>
+      <p class="muted small" style="margin:0" id="counts"></p>
+    </section>
+
+    <div class="savebar">
+      <span class="status" id="status" role="status"></span>
+      <div class="row"><button type="button" class="btn ghost" id="reset">Reset to defaults</button><button class="btn primary" type="submit">Save settings</button></div>
+    </div>
+  </form>
+  <script src="options.js"></script>
+</body>
+</html>

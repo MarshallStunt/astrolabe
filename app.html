@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Astrolabe</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Inter:wght@400;500;600&family=Noto+Sans+Symbols:wght@400;500&family=Noto+Sans+Symbols+2&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="logo">✦</span> Astrolabe</div>
+      <nav class="nav">
+        <button data-action="nav" data-view="today">☀ Today</button>
+        <button data-action="nav" data-view="chart">◎ Birth chart</button>
+        <button data-action="nav" data-view="num">№ Numerology</button>
+        <button data-action="nav" data-view="hd">⬡ Human Design</button>
+        <button data-action="nav" data-view="timeline">⟶ Life timeline</button>
+        <button data-action="nav" data-view="compat">⚭ Compatibility</button>
+        <button data-action="nav" data-view="group">⁂ Group &amp; family</button>
+        <button data-action="nav" data-view="journal">✎ Journal</button>
+        <button data-action="nav" data-view="ai">✦ Ask AI</button>
+      </nav>
+      <div class="people-head"><span>People</span><button class="btn small" data-action="new-person">+ Add</button></div>
+      <div class="people" id="people"></div>
+      <button class="settings-btn" data-action="settings">⚙ Settings &amp; config</button>
+    </aside>
+    <div class="content">
+      <div class="topbar"><div id="topbar-controls" class="topbar-controls"></div></div>
+      <main id="main"></main>
+    </div>
+  </div>
+  <div class="modal" id="modal"></div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Astrolabe \u2014 Birth Charts & AI Synastry",
+  "short_name": "Astrolabe",
+  "version": "1.1.0",
+  "description": "Tropical and sidereal birth charts for everyone in your life, compatibility by life area, and AI readings with Claude.",
+  "permissions": [
+    "storage",
+    "declarativeNetRequestWithHostAccess",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://geocoding-api.open-meteo.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open Astrolabe",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}
