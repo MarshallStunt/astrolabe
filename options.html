@@ -18,6 +18,10 @@
     .status { font-size: 13px; min-height: 18px; } .status.ok { color: var(--good); } .status.bad { color: var(--bad); }
     .savebar { display: flex; align-items: center; justify-content: space-between; gap: 12px; position: sticky; bottom: 12px; background: var(--bg2); border: 1px solid var(--line2); border-radius: 14px; padding: 12px 16px; box-shadow: 0 12px 30px rgba(0,0,0,.4); }
     .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sliders { display: grid; gap: 10px; }
+    .slider { display: grid !important; grid-template-columns: 70px 1fr 90px; align-items: center; gap: 10px; }
+    .slider input { accent-color: var(--accent); padding: 0; border: 0; background: none; box-shadow: none; }
+    .slider b { color: var(--text); font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
     .check { display: flex !important; align-items: center; gap: 8px; color: var(--text) !important; } .check input { width: auto; }
   </style>
 </head>
@@ -47,6 +51,21 @@
       </div>
     </section>
 
+    <section class="card" id="voice-card">
+      <h3>Voice &amp; reading</h3>
+      <p class="muted small" style="margin:0">How Astrolabe sounds when it reads pages and Claude's answers aloud. Uses the voices on this computer — changes save instantly.</p>
+      <label>Voice<select id="tts-voice"><option value="">Automatic (best voice for my language)</option></select></label>
+      <label class="check"><input type="checkbox" id="tts-all"> Show voices for all languages</label>
+      <div class="sliders">
+        <label class="slider">Speed<input type="range" id="tts-rate" min="0.5" max="2" step="0.05"><b id="tts-rate-v"></b></label>
+        <label class="slider">Pitch<input type="range" id="tts-pitch" min="0.5" max="1.6" step="0.05"><b id="tts-pitch-v"></b></label>
+        <label class="slider">Volume<input type="range" id="tts-volume" min="0.1" max="1" step="0.05"><b id="tts-volume-v"></b></label>
+      </div>
+      <label class="check"><input type="checkbox" id="tts-auto"> Read Claude's answers aloud automatically</label>
+      <div class="row"><button type="button" class="btn" id="tts-test">▶︎ Test voice</button><button type="button" class="btn ghost" id="tts-reset">Reset voice settings</button></div>
+      <p class="muted small" style="margin:0">Tip: macOS has extra high-quality voices — System Settings → Accessibility → Spoken Content → System voice → Manage Voices. Download one (e.g. an “Enhanced” or “Premium” voice), then restart Chrome and pick it here.</p>
+    </section>
+
     <section class="card">
       <h3>Chart defaults</h3>
       <div class="grid2">
@@ -70,6 +89,13 @@
       </div>
       <div><div class="muted small" style="margin-bottom:6px">Who to include (none ticked = the person marked “Me”, or the first person)</div><div id="notify-people" class="row"></div></div>
       <p class="muted small" style="margin:0">Forecasts are prepared whenever Astrolabe is open, two weeks ahead. Chrome must be running at the chosen time.</p>
+    </section>
+
+    <section class="card">
+      <h3>Journal reminder</h3>
+      <label class="check"><input type="checkbox" name="journalRemind"> Remind me to log my mood each day</label>
+      <div class="grid2"><label>Time<input type="time" name="journalTime" value="21:00"></label><span></span></div>
+      <p class="muted small" style="margin:0">Skipped automatically on days you've already logged.</p>
     </section>
 
     <section class="card">

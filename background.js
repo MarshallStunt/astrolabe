@@ -61,3 +61,38 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 chrome.runtime.onInstalled.addListener(scheduleMorning);
 chrome.runtime.onStartup.addListener(scheduleMorning);
+
+// ---- Daily journal reminder ----
+const JALARM = 'astrolabe-journal';
+async function scheduleJournal() {
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  await chrome.alarms.clear(JALARM);
+  if (!settings.journalRemind) return;
+  const [h, m] = (settings.journalTime || '21:00').split(':').map(Number);
+  const next = new Date(); next.setHours(h, m, 0, 0);
+  if (next <= new Date()) next.setDate(next.getDate() + 1);
+  chrome.alarms.create(JALARM, { when: next.getTime(), periodInMinutes: 1440 });
+}
+async function showJournalReminder() {
+  const { settings = {}, journal = [] } = await chrome.storage.local.get(['settings', 'journal']);
+  if (!settings.journalRemind) return;
+  const d = new Date(), key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (journal.some((e) => e.date === key)) return; // already logged today
+  chrome.notifications.create(JALARM + ':' + key, { type: 'basic', iconUrl: 'icons/icon128.png', title: 'How was your day?', message: 'Two taps to log your mood in Astrolabe \u2014 it saves the sky with it.', priority: 0 });
+}
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === JALARM) showJournalReminder(); });
+chrome.notifications.onClicked.addListener(async (id) => {
+  if (!id.startsWith(JALARM)) return;
+  chrome.notifications.clear(id);
+  const url = APP + '#journal';
+  const [tab] = await chrome.tabs.query({ url: APP + '*' });
+  if (tab) { await chrome.tabs.update(tab.id, { active: true, url }); await chrome.windows.update(tab.windowId, { focused: true }); }
+  else await chrome.tabs.create({ url });
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !changes.settings) return;
+  const o = changes.settings.oldValue || {}, n = changes.settings.newValue || {};
+  if (o.journalRemind !== n.journalRemind || o.journalTime !== n.journalTime) scheduleJournal();
+});
+chrome.runtime.onInstalled.addListener(scheduleJournal);
+chrome.runtime.onStartup.addListener(scheduleJournal);

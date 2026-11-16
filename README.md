@@ -16,10 +16,21 @@ A Chrome extension for birth charts and relationship astrology. You keep profile
   - The planets touching your chart now, split into this week and the bigger chapter, with exact dates.
   - Retrograde alerts, upcoming new and full moons, retrograde stations, and your big dates for the next 12 months.
   - A one-line forecast for everyone in your list.
-- **Morning notification:** optional. Turn it on and pick a time and people in Settings. The app prepares 14 days of forecasts whenever it's open.
+- **Morning notification:** optional. Turn it on and pick a time and people in Settings. The journal reminder is set up in the same place. The app prepares 14 days of forecasts whenever it's open.
 - **⟶ Life timeline:** numerology chapters, Vedic dasha periods, and turning points such as Jupiter and Saturn returns, Saturn and Uranus oppositions, the Neptune square and nodal returns. A "now" marker shows where you are.
 - **⁂ Group & family:** a color grid of compatibility for every pair (all systems combined, or astrology, numerology or Human Design alone), the easiest and hardest pairs, each person's role in the group, the group's element balance and Human Design mix, and an AI group reading.
-- **✎ Journal:** dated notes with a mood. The app records the sky for each day automatically, keeps a mood chart and your saved AI readings, and has a **Find patterns** button. Claude reads the journal.
+- **✎ Journal:** a mood diary in the style of the Daylio app.
+  - **Logging:** two-tap entries with five colored moods (rad to awful), activity tags in groups, your own custom activities and an optional note. Several entries per day are allowed, and entries can be edited.
+  - **Sky context:** the app records the Moon's sign and phase, your strongest transit and your numerology day with each entry.
+  - **Tabs:** an entries timeline; a month calendar plus "Year in Pixels"; and stats. The stats show your mood over 30 days, a count of each mood, your streaks, how much each activity lifts or lowers your mood, and your mood by Moon sign, Moon phase and personal day.
+  - **Daily reminder:** optional, and skipped on days you've already logged.
+  - **AI:** Claude reads the entries and stats, and the **Find patterns** button asks it to connect them.
+- **🔊 Read aloud:**
+  - **Where:** a **Read this page** button at the top of every screen, plus **Listen** on every Claude answer and saved reading.
+  - **Player:** a bar with pause, previous/next, stop and voice. The part being read is highlighted and scrolled into view.
+  - **Voice settings:** the ⚙ next to "Read this page", or "Voice settings" in the player, tunes speed (0.5–2×), pitch, volume and voice, with a test button. The same controls are under Settings → Voice & reading.
+  - **Auto-read:** an optional toggle in the chat reads Claude's answers as soon as they finish.
+  - **Voices:** Chrome's and macOS's own voices, so it's free, private and works offline. Esc stops it.
 - **⇩ Reports:** on Birth chart, Compatibility and Group, prints a clean light-theme report. Choose "Save as PDF" in the print dialog to keep it.
 - **Extras:**
   - **Chinese zodiac:** the animal and element based on the exact lunar new year date, plus Chinese compatibility for couples.

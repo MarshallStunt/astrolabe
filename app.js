@@ -29637,6 +29637,7 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
     toast.t = setTimeout(() => t.classList.remove("show"), 3200);
   }
   function render() {
+    if (reader.state !== "idle") readStop(); else if (reader.more) setTimeout(renderPlayer, 0);
     renderSidebar();
     renderTopbar();
     const main = $("#main");
@@ -30828,46 +30829,200 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
   </section>`;
   }
 
-  // ---------- Journal & saved readings ----------
-  var MOODS = [["1", "\u{1F61E}", "Low"], ["2", "\u{1F615}", "Meh"], ["3", "\u{1F610}", "Okay"], ["4", "\u{1F642}", "Good"], ["5", "\u{1F604}", "Great"]];
+  // ---------- Journal (mood tracker inspired by daily mood-diary apps, plus the sky) ----------
+  var MOODS = [null, { label: "awful", face: "\u{1F61E}", color: "#ef5a6f" }, { label: "bad", face: "\u{1F615}", color: "#f5a04a" }, { label: "meh", face: "\u{1F610}", color: "#5aa9e6" }, { label: "good", face: "\u{1F642}", color: "#9ad94a" }, { label: "rad", face: "\u{1F604}", color: "#3ccf91" }];
+  var moodColor = (v) => {
+    // Blend between the five mood colors for averages like 3.6
+    const lo = Math.max(1, Math.min(5, Math.floor(v))), hi = Math.min(5, lo + 1), t = Math.max(0, Math.min(1, v - lo));
+    const hex = (c) => [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)), a = hex(MOODS[lo].color), b = hex(MOODS[hi].color);
+    return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * t)).join(",")})`;
+  };
+  var ACTIVITY_GROUPS = [
+    ["Social", [["friends", "\u{1F46F}", "friends"], ["family", "\u{1F46A}", "family"], ["partner", "❤️", "partner"], ["date", "\u{1F339}", "date"], ["party", "\u{1F389}", "party"], ["alone", "\u{1F9D8}", "alone time"]]],
+    ["Work & study", [["work", "\u{1F4BC}", "work"], ["study", "\u{1F4DA}", "study"], ["meeting", "\u{1F5E3}️", "meetings"], ["creative", "\u{1F3A8}", "creative work"], ["deadline", "⏰", "deadline"]]],
+    ["Health", [["exercise", "\u{1F3C3}", "exercise"], ["sleep-good", "\u{1F634}", "slept well"], ["sleep-bad", "\u{1F971}", "slept badly"], ["eat-healthy", "\u{1F957}", "ate healthy"], ["sick", "\u{1F912}", "sick"], ["meditation", "\u{1F54A}️", "meditation"]]],
+    ["Fun & rest", [["reading", "\u{1F4D6}", "reading"], ["music", "\u{1F3B5}", "music"], ["movies", "\u{1F3AC}", "movies & TV"], ["gaming", "\u{1F3AE}", "gaming"], ["nature", "\u{1F333}", "nature"], ["travel", "✈️", "travel"], ["shopping", "\u{1F6CD}️", "shopping"], ["cleaning", "\u{1F9F9}", "chores"]]],
+    ["Feelings", [["stressed", "\u{1F62C}", "stressed"], ["anxious", "\u{1F630}", "anxious"], ["grateful", "\u{1F64F}", "grateful"], ["inspired", "✨", "inspired"], ["argument", "⚡", "argument"], ["lonely", "\u{1F327}️", "lonely"]]]
+  ];
+  function activityList() {
+    const custom = (S.settings.customActivities || []).map((a) => [a.id, a.icon, a.name]);
+    return [...ACTIVITY_GROUPS, ...custom.length ? [["Yours", custom]] : []];
+  }
+  var activityById = (id) => { for (const [, items] of activityList()) for (const a of items) if (a[0] === id) return { id: a[0], icon: a[1], name: a[2] }; return null; };
+  var dkey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  var skyMemo = /* @__PURE__ */ new Map();
+  function entrySky(e) {
+    // Older entries saved before these fields existed get them computed (and remembered) on the fly.
+    if (e.moonSign && e.moonPhase && e.pday) return e;
+    const k = e.personId + e.date;
+    if (!skyMemo.has(k)) {
+      const p = person(e.personId), d = /* @__PURE__ */ new Date(e.date + "T12:00:00"), m = moonToday(d);
+      skyMemo.set(k, { moonSign: m.sign, moonPhase: m.phase, pday: p ? numerology(p, numSys(), d).personalDay : null });
+    }
+    return { ...e, ...skyMemo.get(k) };
+  }
   function skyNote(p, date) {
     const m = moonToday(date), tr = transitsFor(p, date).slice(0, 2);
     return `Moon in ${m.sign} (${m.phase.toLowerCase()})${tr.length ? "; " + tr.map((x) => `${x.tb} ${x.type} natal ${x.tk}`).join(", ") : ""}; personal day ${numerology(p, numSys(), date).personalDay}`;
+  }
+  function journalStats(p) {
+    const es = S.journal.filter((e) => e.personId === p.id).map(entrySky);
+    const byDay = {};
+    for (const e of es) (byDay[e.date] ||= []).push(e);
+    const dayAvg = Object.fromEntries(Object.entries(byDay).map(([d, l]) => [d, l.reduce((s2, e) => s2 + +e.mood, 0) / l.length]));
+    const avg = es.length ? es.reduce((s2, e) => s2 + +e.mood, 0) / es.length : 0;
+    // Streaks: consecutive days with at least one entry.
+    const has = (d) => !!byDay[dkey(d)];
+    let cur = 0;
+    const t = /* @__PURE__ */ new Date();
+    if (!has(t)) t.setDate(t.getDate() - 1);
+    while (has(t)) { cur++; t.setDate(t.getDate() - 1); }
+    let best = 0, run = 0, prev = null;
+    for (const d of Object.keys(byDay).sort()) {
+      const dt = /* @__PURE__ */ new Date(d + "T12:00:00");
+      run = prev && Math.round((dt - prev) / 864e5) === 1 ? run + 1 : 1;
+      best = Math.max(best, run); prev = dt;
+    }
+    const group = (keyFn, min = 2) => {
+      const m = {};
+      for (const e of es) { const k = keyFn(e); if (k == null) continue; (m[k] ||= []).push(+e.mood); }
+      return Object.fromEntries(Object.entries(m).filter(([, v]) => v.length >= min).map(([k, v]) => [k, { avg: v.reduce((a, b) => a + b, 0) / v.length, n: v.length }]));
+    };
+    const acts = {};
+    for (const e of es) for (const a of e.activities || []) (acts[a] ||= []).push(+e.mood);
+    const impact = Object.entries(acts).filter(([, v]) => v.length >= 2).map(([id, v]) => ({ id, n: v.length, avg: v.reduce((a, b) => a + b, 0) / v.length, diff: v.reduce((a, b) => a + b, 0) / v.length - avg })).sort((a, b) => b.diff - a.diff);
+    const counts = [0, 0, 0, 0, 0, 0];
+    for (const e of es) counts[e.mood]++;
+    return { es, byDay, dayAvg, avg, cur, best, impact, counts, bySign: group((e) => e.moonSign), byPhase: group((e) => e.moonPhase), byPday: group((e) => e.pday) };
+  }
+  function moodBarsSVG(items, avg, { height = 150 } = {}) {
+    // items: [{label, sub, value (1-5) | null, n}]
+    const W = 30 * items.length + 20, H = height, base = H - 28, top = 10, y = (v) => base - (v - 1) / 4 * (base - top);
+    const bars = items.map((it, i) => {
+      const x = 14 + i * 30;
+      const bar = it.value == null ? `<rect x="${x + 3}" y="${base - 3}" width="18" height="3" rx="1.5" class="mb-empty"/>` : `<rect x="${x + 3}" y="${y(it.value).toFixed(1)}" width="18" height="${(base - y(it.value)).toFixed(1)}" rx="5" fill="${moodColor(it.value)}"><title>${esc2(it.title || it.label)}: ${it.value.toFixed(1)} avg mood (${it.n} entries)</title></rect>`;
+      return `${bar}<text x="${x + 12}" y="${base + 14}" class="mb-l">${it.label}</text>`;
+    }).join("");
+    const avgLine = avg ? `<line x1="10" x2="${W - 4}" y1="${y(avg).toFixed(1)}" y2="${y(avg).toFixed(1)}" class="mb-avg"/>` : "";
+    return `<svg viewBox="0 0 ${W} ${H}" class="moodbars" role="img">${[1, 3, 5].map((v) => `<text x="6" y="${y(v) + 3}" class="mb-y">${MOODS[v].face}</text>`).join("")}${avgLine}${bars}</svg>`;
+  }
+  function moodLineSVG(st) {
+    const days = [];
+    const t = /* @__PURE__ */ new Date();
+    for (let i = 29; i >= 0; i--) { const d = new Date(t); d.setDate(d.getDate() - i); days.push({ d, v: st.dayAvg[dkey(d)] ?? null }); }
+    const W = 600, H = 150, x = (i) => 30 + i * (W - 44) / 29, y = (v) => 128 - (v - 1) / 4 * 112;
+    const pts = days.map((p2, i) => p2.v == null ? null : [x(i), y(p2.v), p2]).filter(Boolean);
+    const path = pts.map((q, i) => `${i ? "L" : "M"}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join(" ");
+    const grid = [1, 2, 3, 4, 5].map((v) => `<line x1="28" x2="${W - 10}" y1="${y(v)}" y2="${y(v)}" class="ml-grid"/><text x="4" y="${y(v) + 5}" class="ml-face">${MOODS[v].face}</text>`).join("");
+    const labels = days.map((p2, i) => i % 7 === 0 || i === 29 ? `<text x="${x(i)}" y="146" class="ml-x">${p2.d.getDate()}/${p2.d.getMonth() + 1}</text>` : "").join("");
+    return `<svg viewBox="0 0 ${W} ${H}" class="moodline" role="img" aria-label="Mood over the last 30 days">${grid}${path ? `<path d="${path}" class="ml-path"/>` : ""}${pts.map((q) => `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="4.5" fill="${moodColor(q[2].v)}"><title>${dkey(q[2].d)}: ${q[2].v.toFixed(1)}</title></circle>`).join("")}${labels}</svg>`;
+  }
+  function entryFormHTML(p, editing) {
+    const e = editing || {};
+    const now = /* @__PURE__ */ new Date();
+    const sel = new Set(e.activities || S.ui.jdraftActs || []);
+    const mood = e.mood || S.ui.jdraftMood || 0;
+    return `<form class="card jform" id="journal-form" data-edit="${e.id || ""}">
+      <div class="jq">${editing ? "Edit entry" : `How was ${esc2(p.name.split(" ")[0])}'s day?`}</div>
+      <div class="moodpick">${[5, 4, 3, 2, 1].map((v) => `<label class="mp ${mood === v ? "on" : ""}" style="--mc:${MOODS[v].color}"><input type="radio" name="mood" value="${v}" ${mood === v ? "checked" : ""}><span class="mp-face">${MOODS[v].face}</span><span class="mp-l">${MOODS[v].label}</span></label>`).join("")}</div>
+      <div class="jacts ${mood ? "" : "dim"}">
+        <div class="jq small">What have you been up to?</div>
+        ${activityList().map(([g, items]) => `<div class="agrp"><div class="agrp-h">${g}</div><div class="agrp-items">${items.map(([id, icon, name]) => `<button type="button" class="act ${sel.has(id) ? "on" : ""}" data-action="toggle-act" data-act="${id}"><span>${icon}</span><i>${esc2(name)}</i></button>`).join("")}${g === "Yours" || g === activityList().at(-1)[0] ? `<button type="button" class="act add" data-action="add-activity"><span>＋</span><i>add your own</i></button>` : ""}</div></div>`).join("")}
+      </div>
+      <textarea name="text" rows="2" placeholder="Add a note (optional)">${esc2(e.text || S.ui.jdraftText || "")}</textarea>
+      <div class="jrow"><div class="jrow-l"><input type="date" name="date" value="${e.date || dkey(now)}" max="${dkey(now)}"><input type="time" name="time" value="${e.time || `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`}"></div>
+        <div class="jrow-r">${editing ? '<button type="button" class="btn ghost" data-action="cancel-edit">Cancel</button>' : ""}<button class="btn primary" ${mood ? "" : "disabled"}>${editing ? "Save changes" : "Save entry"}</button></div></div>
+    </form>`;
   }
   function journalView() {
     const p = person(S.ui.selectedId) || S.profiles[0];
     if (!p) return emptyState();
     S.ui.selectedId = p.id;
     const first = esc2(p.name.split(" ")[0]);
-    const entries = S.journal.filter((e) => e.personId === p.id).sort((a, b) => b.date.localeCompare(a.date));
+    const st = journalStats(p), tab = S.ui.jtab || "entries";
+    const editing = S.ui.jedit ? S.journal.find((e) => e.id === S.ui.jedit) : null;
     const saved = S.saved.filter((r) => r.personIds.includes(p.id)).sort((a, b) => b.created - a.created);
-    const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-    const moodAvg = entries.length ? (entries.reduce((s2, e) => s2 + +e.mood, 0) / entries.length).toFixed(1) : null;
-    const spark = entries.slice(0, 30).reverse();
-    const sparkSVG = spark.length > 1 ? `<svg viewBox="0 0 300 60" class="spark" preserveAspectRatio="none"><polyline points="${spark.map((e, i) => `${(i / (spark.length - 1) * 296 + 2).toFixed(1)},${(56 - (e.mood - 1) / 4 * 50).toFixed(1)}`).join(" ")}"/>${spark.map((e, i) => `<circle cx="${(i / (spark.length - 1) * 296 + 2).toFixed(1)}" cy="${(56 - (e.mood - 1) / 4 * 50).toFixed(1)}" r="2.5"><title>${e.date}: ${MOODS[e.mood - 1][2]}</title></circle>`).join("")}</svg>` : "";
-    return `
-  <section class="view journal-view">
-    <header class="vhead"><div><h1>${first}'s journal</h1><p class="muted">Notes, moods and saved AI readings — Claude reads these to spot patterns</p></div>
-      <div class="actions">${entries.length >= 3 ? `<button class="btn" data-action="ask-patterns" data-id="${p.id}">✦ Find patterns</button>` : ""}</div></header>
-    ${guideBox("journal", "Why keep a journal here?", `<p>Write a few words about your day and pick a mood. Astrolabe quietly records what the sky was doing that day (the Moon's sign, your strongest transit, your personal day number). After a few weeks, ask Claude to <b>find patterns</b> — for example, whether you feel low when Saturn touches your Moon, or great on personal day 5.</p>`)}
-    <form class="card jform" id="journal-form">
-      <div class="jrow"><input type="date" name="date" value="${today}" max="${today}"><div class="moods">${MOODS.map(([v, ic, l]) => `<label class="mood"><input type="radio" name="mood" value="${v}" ${v === "3" ? "checked" : ""}><span title="${l}">${ic}<i>${l}</i></span></label>`).join("")}</div></div>
-      <textarea name="text" rows="3" placeholder="How was today for ${first}? What happened, how did it feel?"></textarea>
-      <div class="jrow"><span class="muted small">The sky for that day is saved automatically.</span><button class="btn primary">Save entry</button></div>
-    </form>
-    <div class="two-col">
-      <div class="card"><h3>Entries ${moodAvg ? `<span class="muted small">\xB7 average mood ${moodAvg}/5</span>` : ""}</h3>${sparkSVG}
-        <div class="jlist">${entries.map((e) => `<div class="jentry"><div class="jhead"><span class="jmood">${MOODS[e.mood - 1][1]}</span><b>${fmtDate(/* @__PURE__ */ new Date(e.date + "T12:00:00"))}</b><button class="del" data-action="del-entry" data-id="${e.id}" title="Delete entry">\xD7</button></div>${e.text ? `<p>${esc2(e.text)}</p>` : ""}<div class="jsky">✦ ${esc2(e.sky)}</div></div>`).join("") || '<p class="muted">No entries yet.</p>'}</div></div>
-      <div class="card"><h3>Saved readings</h3><p class="muted small">Pin any AI answer with “Save to profile” in the chat.</p>
-        <div class="saved">${saved.map((r) => `<details class="sreading"><summary><b>${esc2(r.title)}</b><span class="muted small"> \xB7 ${fmtDate(new Date(r.created))}</span><button class="del" data-action="del-saved" data-id="${r.id}" title="Delete">\xD7</button></summary><div class="md">${renderMarkdown(r.text)}</div></details>`).join("") || '<p class="muted">Nothing saved yet.</p>'}</div></div>
+    const todayDone = !!st.byDay[dkey(/* @__PURE__ */ new Date())];
+    const head = `
+    <header class="vhead"><div><h1>${first}'s journal</h1><p class="muted">Track moods and what you did — then see what the stars (and your habits) have to do with it</p></div>
+      <div class="actions">${st.es.length >= 3 ? `<button class="btn" data-action="ask-patterns" data-id="${p.id}">✦ Find patterns with AI</button>` : ""}</div></header>
+    ${guideBox("journal", "How the journal works", `<p>Log your day in two taps: pick a <b>mood</b>, tap what you did, add a note if you like. Astrolabe automatically records the sky that day — the Moon's sign and phase, your strongest transit and your numerology day. Over time the <b>Stats</b> tab shows which activities lift your mood, and whether the Moon or your personal day numbers line up with good and bad days.</p>`)}
+    <div class="jstrip">
+      <div class="jst"><b>${st.cur}</b><span>day streak \u{1F525}</span></div>
+      <div class="jst"><b>${st.best}</b><span>longest streak</span></div>
+      <div class="jst"><b>${st.es.length}</b><span>entries</span></div>
+      <div class="jst" style="--mc:${st.avg ? moodColor(st.avg) : "var(--line2)"}"><b class="mood-avg">${st.avg ? MOODS[Math.round(st.avg)].face + " " + st.avg.toFixed(1) : "—"}</b><span>average mood</span></div>
     </div>
-  </section>`;
+    ${editing || !todayDone || S.ui.jform ? entryFormHTML(p, editing) : `<div class="card jdone"><span>✔ ${first}'s day is logged.</span><button class="btn" data-action="new-entry">＋ Add another entry</button></div>`}
+    <div class="seg jtabs">${[["entries", "Entries"], ["calendar", "Calendar"], ["stats", "Stats"], ["saved", `Saved readings${saved.length ? ` (${saved.length})` : ""}`]].map(([k, l]) => `<button class="${tab === k ? "on" : ""}" data-action="jtab" data-tab="${k}">${l}</button>`).join("")}</div>`;
+    let body = "";
+    if (tab === "entries") {
+      const days = Object.keys(st.byDay).sort().reverse();
+      body = days.length ? days.map((d) => {
+        const list = st.byDay[d].sort((a, b) => (b.time || "").localeCompare(a.time || ""));
+        const dt = /* @__PURE__ */ new Date(d + "T12:00:00");
+        return `<div class="jday"><div class="jday-h"><b>${dt.toLocaleDateString(void 0, { weekday: "long", month: "long", day: "numeric" })}</b><span class="muted small">☽ ${list[0].moonSign} \xB7 ${list[0].moonPhase.toLowerCase()} \xB7 day ${list[0].pday}</span></div>
+          ${list.map((e) => `<div class="jentry" style="--mc:${MOODS[e.mood].color}"><div class="je-face">${MOODS[e.mood].face}</div><div class="je-body"><div class="je-top"><b class="je-mood">${MOODS[e.mood].label}</b>${e.time ? `<span class="muted small">${e.time}</span>` : ""}<span class="je-acts">${(e.activities || []).map(activityById).filter(Boolean).map((a) => `<span title="${esc2(a.name)}">${a.icon} ${esc2(a.name)}</span>`).join("")}</span><span class="je-tools"><button class="link small" data-action="edit-entry" data-id="${e.id}">edit</button><button class="del" data-action="del-entry" data-id="${e.id}" title="Delete entry">\xD7</button></span></div>${e.text ? `<p>${esc2(e.text)}</p>` : ""}${e.sky ? `<div class="jsky">✦ ${esc2(e.sky)}</div>` : ""}</div></div>`).join("")}</div>`;
+      }).join("") : '<div class="card"><p class="muted">No entries yet — pick a mood above to start.</p></div>';
+    } else if (tab === "calendar") {
+      const ym = S.ui.jmonth || dkey(/* @__PURE__ */ new Date()).slice(0, 7);
+      const [Y, M] = ym.split("-").map(Number), firstDay = new Date(Y, M - 1, 1), nDays = new Date(Y, M, 0).getDate(), lead = (firstDay.getDay() + 6) % 7;
+      const cells = [];
+      for (let i = 0; i < lead; i++) cells.push('<div class="cal-c empty"></div>');
+      for (let d = 1; d <= nDays; d++) {
+        const k = `${ym}-${String(d).padStart(2, "0")}`, v = st.dayAvg[k], es = st.byDay[k] || [];
+        const icons = [...new Set(es.flatMap((e) => e.activities || []))].slice(0, 3).map(activityById).filter(Boolean).map((a) => a.icon).join("");
+        cells.push(`<div class="cal-c ${v ? "has" : ""} ${k === dkey(/* @__PURE__ */ new Date()) ? "today" : ""}" ${v ? `style="--mc:${moodColor(v)}"` : ""} title="${k}${v ? ` — mood ${v.toFixed(1)}` : ""}"><span class="cal-d">${d}</span>${v ? `<span class="cal-f">${MOODS[Math.round(v)].face}</span><span class="cal-i">${icons}</span>` : ""}</div>`);
+      }
+      const prevM = new Date(Y, M - 2, 1), nextM = new Date(Y, M, 1);
+      const yr = Y;
+      const pix = Array.from({ length: 31 }, (_, di) => `<div class="px-row"><span class="px-d">${di + 1}</span>${Array.from({ length: 12 }, (_, mi) => { const dd = new Date(yr, mi, di + 1); if (dd.getMonth() !== mi) return '<i class="px none"></i>'; const k = dkey(dd), v = st.dayAvg[k]; return `<i class="px ${v ? "" : "blank"}" ${v ? `style="background:${moodColor(v)}"` : ""} title="${k}${v ? ` — ${v.toFixed(1)}` : ""}"></i>`; }).join("")}</div>`).join("");
+      body = `<div class="two-col cal-wrap">
+        <div class="card"><div class="cal-head"><button class="btn ghost icon" data-action="jmonth" data-m="${dkey(prevM).slice(0, 7)}">‹</button><h3>${firstDay.toLocaleDateString(void 0, { month: "long", year: "numeric" })}</h3><button class="btn ghost icon" data-action="jmonth" data-m="${dkey(nextM).slice(0, 7)}">›</button></div>
+          <div class="cal-grid">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((w) => `<div class="cal-w">${w}</div>`).join("")}${cells.join("")}</div></div>
+        <div class="card"><h3>${yr} in pixels ${tipHTML("Every day of the year as one small square, colored by that day's mood. A quick picture of your whole year.")}</h3>
+          <div class="pixels"><div class="px-row px-mh"><span class="px-d"></span>${"JFMAMJJASOND".split("").map((c) => `<span class="px-m">${c}</span>`).join("")}</div>${pix}</div>
+          <div class="px-legend">${[1, 2, 3, 4, 5].map((v) => `<span><i style="background:${MOODS[v].color}"></i>${MOODS[v].label}</span>`).join("")}</div></div>
+      </div>`;
+    } else if (tab === "stats") {
+      const enough = st.es.length >= 3;
+      const donutParts = [5, 4, 3, 2, 1].map((v) => ({ label: MOODS[v].label, value: st.counts[v], color: MOODS[v].color }));
+      const SIGN_ABBR = ["Ari", "Tau", "Gem", "Can", "Leo", "Vir", "Lib", "Sco", "Sag", "Cap", "Aqu", "Pis"];
+      const PHASE_ABBR = { "New Moon": "\u{1F311}", "Waxing Crescent": "\u{1F312}", "First Quarter": "\u{1F313}", "Waxing Gibbous": "\u{1F314}", "Full Moon": "\u{1F315}", "Waning Gibbous": "\u{1F316}", "Last Quarter": "\u{1F317}", "Waning Crescent": "\u{1F318}" };
+      const signItems = SIGNS.map((s2, i) => ({ label: SIGN_ABBR[i], title: `Moon in ${s2}`, value: st.bySign[s2]?.avg ?? null, n: st.bySign[s2]?.n || 0 }));
+      const phaseItems = Object.keys(PHASE_ABBR).map((ph) => ({ label: PHASE_ABBR[ph], title: ph, value: st.byPhase[ph]?.avg ?? null, n: st.byPhase[ph]?.n || 0 }));
+      const pdayItems = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => ({ label: String(d), title: `Personal day ${d}`, value: st.byPday[d]?.avg ?? null, n: st.byPday[d]?.n || 0 }));
+      const bestOf = (items) => { const f = items.filter((x) => x.value != null).sort((a, b) => b.value - a.value); return f.length >= 2 ? `Best: <b>${esc2(f[0].title)}</b> (${f[0].value.toFixed(1)}) \xB7 hardest: <b>${esc2(f.at(-1).title)}</b> (${f.at(-1).value.toFixed(1)})` : "Log more days to compare."; };
+      const impactRow = (x) => { const a = activityById(x.id); if (!a) return ""; const w = Math.min(100, Math.abs(x.diff) / 2 * 100); return `<div class="imp"><span class="imp-a">${a.icon} ${esc2(a.name)}</span><div class="imp-bar"><div class="imp-mid"></div><div class="imp-fill ${x.diff >= 0 ? "up" : "down"}" style="width:${w / 2}%"></div></div><b class="${x.diff >= 0 ? "good-t" : "bad-t"}">${x.diff >= 0 ? "+" : ""}${x.diff.toFixed(1)}</b><span class="muted small">${x.n}\xD7</span></div>`; };
+      body = !enough ? '<div class="card"><p class="muted">Stats appear after 3 or more entries. Keep logging — a week or two gives meaningful patterns.</p></div>' : `
+      <div class="two-col" style="margin-top:0">
+        <div class="card"><h3>Mood over the last 30 days</h3>${moodLineSVG(st)}</div>
+        <div class="card"><h3>Mood count</h3><div class="el-wrap">${donutSVG(donutParts.filter((x) => x.value), MOODS[st.counts.indexOf(Math.max(...st.counts.slice(1)))].label)}<div class="el-legend" style="display:grid;gap:4px">${donutParts.map((x) => `<span><i class="lg-dot" style="background:${x.color}"></i>${x.label}: ${x.value}</span>`).join("")}</div></div></div>
+      </div>
+      <div class="card" style="margin-top:18px"><h3>What lifts ${first}'s mood ${tipHTML("Average mood on days with this activity, compared with your overall average. Shown once an activity appears at least twice.")}</h3>
+        ${st.impact.length ? `<div class="imps">${st.impact.map(impactRow).join("")}</div><p class="muted small">Correlation, not proof — but a good place to start.</p>` : '<p class="muted">Tag activities on a few entries to see which ones go with your best days.</p>'}</div>
+      <h2 class="section-title">Mood and the sky ${tipHTML("Your average mood grouped by where the Moon was, the Moon's phase and your numerology personal day. The dashed line is your overall average. Groups need 2+ entries.")}</h2>
+      <p class="muted small">Something no ordinary diary can show: do your moods follow the Moon or your numbers? The more you log, the more reliable this gets.</p>
+      <div class="sky-stats">
+        <div class="card"><h3>By Moon sign</h3>${moodBarsSVG(signItems, st.avg)}<p class="ndesc small">${bestOf(signItems)}</p></div>
+        <div class="card"><h3>By Moon phase</h3>${moodBarsSVG(phaseItems, st.avg)}<p class="ndesc small">${bestOf(phaseItems)}</p></div>
+        <div class="card"><h3>By personal day</h3>${moodBarsSVG(pdayItems, st.avg)}<p class="ndesc small">${bestOf(pdayItems)}</p></div>
+      </div>`;
+    } else {
+      body = `<div class="card"><p class="muted small" style="margin-top:0">Pin any AI answer with “\u{1F4CC} Save to profile” in the chat.</p><div class="saved">${saved.map((r) => `<details class="sreading"><summary><b>${esc2(r.title)}</b><span class="muted small"> \xB7 ${fmtDate(new Date(r.created))}</span><button class="link small" data-action="tts-saved" title="Listen">\u{1F50A}</button><button class="del" data-action="del-saved" data-id="${r.id}" title="Delete">\xD7</button></summary><div class="md">${renderMarkdown(r.text)}</div></details>`).join("") || '<p class="muted">Nothing saved yet.</p>'}</div></div>`;
+    }
+    return `<section class="view journal-view">${head}<div class="jtab-body">${body}</div></section>`;
   }
   function journalContext(p) {
-    const es = S.journal.filter((e) => e.personId === p.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 25);
+    const st = journalStats(p);
+    const es = [...st.es].sort((a, b) => (b.date + (b.time || "")).localeCompare(a.date + (a.time || ""))).slice(0, 30);
     const sv = S.saved.filter((r) => r.personIds.includes(p.id)).slice(-3);
     let out = "";
-    if (es.length) out += `\nJournal (user's notes, newest first; mood 1-5 with the sky that day):\n${es.map((e) => `  ${e.date} mood ${e.mood}: ${e.text.slice(0, 280).replace(/\n/g, " ")} [sky: ${e.sky}]`).join("\n")}`;
+    if (es.length) {
+      out += `\nJournal (user's mood diary, newest first; mood 1=awful … 5=rad; activities; sky that day):\n${es.map((e) => `  ${e.date}${e.time ? " " + e.time : ""} mood ${e.mood} (${MOODS[e.mood].label})${(e.activities || []).length ? " [" + e.activities.map((a) => activityById(a)?.name || a).join(", ") + "]" : ""}${e.text ? ": " + e.text.slice(0, 240).replace(/\n/g, " ") : ""} {${e.sky || `Moon in ${e.moonSign}; personal day ${e.pday}`}}`).join("\n")}`;
+      const fmt = (o) => Object.entries(o).map(([k, v]) => `${k} ${v.avg.toFixed(1)} (n=${v.n})`).join(", ");
+      out += `\nJournal stats: ${st.es.length} entries, average mood ${st.avg.toFixed(2)}, streak ${st.cur} (best ${st.best}). Activity effect vs average: ${st.impact.map((x) => `${activityById(x.id)?.name || x.id} ${x.diff >= 0 ? "+" : ""}${x.diff.toFixed(2)} (n=${x.n})`).join(", ") || "n/a"}. Avg mood by Moon sign: ${fmt(st.bySign) || "n/a"}. By Moon phase: ${fmt(st.byPhase) || "n/a"}. By personal day: ${fmt(st.byPday) || "n/a"}.`;
+    }
     if (sv.length) out += `\nPreviously saved readings (titles): ${sv.map((r) => r.title).join("; ")}`;
     return out;
   }
@@ -30947,6 +31102,184 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     f.onload = () => setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) { toast("Could not open the print dialog: " + e.message); } }, 900);
     toast("Preparing report — choose “Save as PDF” in the print dialog.");
   }
+  // ---------- Read aloud (Web Speech API: the browser's / OS's own voices, offline and free) ----------
+  var TTS = { voice: "", rate: 1, pitch: 1, volume: 1, autoRead: false };
+  var TTS_SAMPLE = "Hi! I'm your Astrolabe reader. This is how I'll sound when I read your charts and readings.";
+  var reader = { queue: [], idx: 0, chunk: 0, chunks: [], state: "idle", title: "", source: "", token: 0 };
+  var ttsOK = typeof speechSynthesis !== "undefined";
+  function speakableText(s) {
+    return String(s || "")
+      .replace(/\s*[\xB7\u2022|]\s*/g, ", ")
+      .replace(/℞/g, " retrograde ")
+      .replace(/(\d+)°(\d+)′/g, "$1 degrees $2 minutes")
+      .replace(/°/g, " degrees").replace(/′/g, "")
+      .replace(/\s[×\xD7]\s/g, " and ").replace(/[→⟶]/g, " to ").replace(/[↔]/g, " and ")
+      .replace(/\b(\d)\/(\d)\b/g, "$1 $2")
+      .replace(/[←-⇿⊕⌀-⏿①-⓿■-◿☀-➿⬀-⯿︎️‍]/g, " ")
+      .replace(/[\u{1F000}-\u{1FAFF}]/gu, " ")
+      .replace(/[#*_`>|]/g, " ")
+      .replace(/\s+/g, " ").trim();
+  }
+  function splitChunks(text, max = 220) {
+    const out = [];
+    // Split on sentence ends (not inside "14:30" or "3.5").
+    for (const sent of text.match(/(?:[^.!?;]|\.(?=\d))+(?:[.!?;]+|$)\s*/g) || [text]) {
+      let s2 = sent.trim();
+      while (s2.length > max) { const cut = s2.lastIndexOf(" ", max) > 40 ? s2.lastIndexOf(" ", max) : max; out.push(s2.slice(0, cut)); s2 = s2.slice(cut).trim(); }
+      if (!s2) continue;
+      if (out.length && out.at(-1).length + s2.length < 120) out[out.length - 1] += " " + s2; else out.push(s2);
+    }
+    return out;
+  }
+  var READ_SKIP = "svg, button, select, input, textarea, .actions, details.tech, table, .tip, .seg, .guide-hint, .legend, .el-legend, .px-legend, .moodpick, .jacts, .chips, .pchip, .typing, .msg-actions, .caption, .je-tools, .cal-grid, .pixels, .gscale, .ts-bar, .type-strip, .hd-legend, .num-legend, .calc, .hd-acts, .rise-strip";
+  var READ_BLOCKS = "h1, h2, h3, h4, h5, p, li, .b3k, .b3s, .b3d, .moon-title, .ntitle, .nkeys, .hd-type-name, .hd-stat, .pc-name, .pc-sign, .tr-head, .tr-when, .ev > div, .jst, .imp, .area-head, .gk-n, .gk-spec, .role b, .ts-item, .hd-ch b, .cz-card .moon-title, .sv-counts, .jday-h, .je-top .je-mood";
+  function readableBlocks(root) {
+    const all = [...root.querySelectorAll(READ_BLOCKS)].filter((el) => !el.closest(READ_SKIP) && el.offsetParent !== null && !el.closest("details:not([open]) > :not(summary)"));
+    const picked = all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
+    // Walk text nodes (ignores CSS uppercase styling), adding pauses between nested blocks.
+    const textOf = (el) => {
+      const parts = [];
+      const walk = (n) => { for (const c of n.childNodes) { if (c.nodeType === 3) parts.push(c.nodeValue); else if (c.nodeType === 1 && !c.matches(READ_SKIP + ", .tip-body, title")) { const block = /^(DIV|P|LI|H\d|BR)$/.test(c.tagName); if (block) parts.push(" "); walk(c); if (block) parts.push(". "); } } };
+      walk(el);
+      return parts.join("").replace(/\.\s*\./g, ".");
+    };
+    return picked.map((el) => ({ el, text: speakableText(textOf(el)) })).filter((b) => b.text.replace(/[\s.,]/g, "").length > 1);
+  }
+  function pickVoice() {
+    const vs = ttsOK ? speechSynthesis.getVoices() : [];
+    if (!vs.length) return null;
+    if (TTS.voice) { const v = vs.find((x) => x.voiceURI === TTS.voice); if (v) return v; }
+    const lang = (navigator.language || "en-US").toLowerCase(), base = lang.split("-")[0];
+    const score = (v) => (v.lang.toLowerCase() === lang ? 4 : v.lang.toLowerCase().startsWith(base) ? 2 : 0) + (/natural|premium|enhanced|neural/i.test(v.name) ? 3 : 0) + (/google/i.test(v.name) ? 1 : 0) + (v.localService ? 0.5 : 0);
+    return [...vs].sort((a, b) => score(b) - score(a))[0];
+  }
+  function readStart(blocks, title, source = "page") {
+    if (!ttsOK) { toast("This browser has no text-to-speech voices."); return; }
+    readStop(true);
+    if (!blocks.length) { toast("Nothing to read here."); return; }
+    reader = { queue: blocks, idx: 0, chunk: 0, chunks: splitChunks(blocks[0].text), state: "playing", title, source, token: reader.token + 1 };
+    renderPlayer();
+    readSpeak();
+  }
+  function readSpeak() {
+    const tok = reader.token;
+    while (reader.idx < reader.queue.length && reader.chunk >= reader.chunks.length) {
+      reader.idx++; reader.chunk = 0;
+      if (reader.idx < reader.queue.length) reader.chunks = splitChunks(reader.queue[reader.idx].text);
+    }
+    if (reader.idx >= reader.queue.length) { readStop(); return; }
+    document.querySelectorAll(".reading-now").forEach((e) => e.classList.remove("reading-now"));
+    const blk = reader.queue[reader.idx];
+    if (blk.el?.isConnected) {
+      blk.el.classList.add("reading-now");
+      if (reader.chunk === 0) blk.el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+    const u = new SpeechSynthesisUtterance(reader.chunks[reader.chunk]);
+    const v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = TTS.rate || 1;
+    u.pitch = TTS.pitch ?? 1;
+    u.volume = TTS.volume ?? 1;
+    u.onend = () => { if (tok !== reader.token || reader.state === "idle") return; reader.chunk++; readSpeak(); };
+    u.onerror = (e) => { if (tok !== reader.token) return; if (e.error !== "interrupted" && e.error !== "canceled") { reader.chunk++; readSpeak(); } };
+    speechSynthesis.speak(u);
+    updatePlayerLabel();
+  }
+  function readStop(silent = false) {
+    reader.token++;
+    reader.state = "idle";
+    if (ttsOK) speechSynthesis.cancel();
+    document.querySelectorAll(".reading-now").forEach((e) => e.classList.remove("reading-now"));
+    if (!silent) renderPlayer();
+  }
+  function readPauseToggle() {
+    if (reader.state === "playing") { speechSynthesis.pause(); reader.state = "paused"; }
+    else if (reader.state === "paused") { speechSynthesis.resume(); reader.state = "playing"; }
+    renderPlayer();
+  }
+  function readJump(delta) {
+    if (reader.state === "idle") return;
+    reader.token++;
+    speechSynthesis.cancel();
+    reader.idx = Math.max(0, Math.min(reader.queue.length - 1, reader.idx + delta));
+    reader.chunk = 0;
+    reader.chunks = splitChunks(reader.queue[reader.idx].text);
+    reader.state = "playing";
+    renderPlayer();
+    readSpeak();
+  }
+  function updatePlayerLabel() {
+    const l = document.querySelector("#player .pl-progress");
+    if (l) l.textContent = `${Math.min(reader.idx + 1, reader.queue.length)} / ${reader.queue.length}`;
+  }
+  function renderPlayer() {
+    let pl = document.getElementById("player");
+    if (!pl) { pl = document.createElement("div"); pl.id = "player"; pl.setAttribute("role", "region"); pl.setAttribute("aria-label", "Read aloud player"); document.body.append(pl); }
+    const rb = document.querySelector(".read-btn");
+    if (rb) rb.innerHTML = reader.state === "idle" ? "\u{1F50A} Read this page" : "\u25A0\uFE0E Stop reading";
+    const vs = ttsOK ? speechSynthesis.getVoices() : [], cur = pickVoice();
+    const lang = (navigator.language || "en").split("-")[0];
+    const opts = vs.filter((v) => v.lang.toLowerCase().startsWith(lang) || v === cur).map((v) => `<option value="${esc2(v.voiceURI)}" ${cur && v.voiceURI === cur.voiceURI ? "selected" : ""}>${esc2(v.name.replace(/\s*\(.*\)$/, ""))} \xB7 ${esc2(v.lang)}</option>`).join("");
+    if (reader.state === "idle" && reader.more) {
+      // Settings-only mode: tune the voice without reading anything.
+      pl.className = "show";
+      document.body.classList.add("has-player");
+      pl.innerHTML = `<div class="pl-info"><b>\u{1F50A} Reading voice</b><span class="pl-progress">Applies to everything Astrolabe reads</span></div>
+        <label class="pl-opt">Voice <select data-tts="voice">${opts || "<option>Default</option>"}</select></label>
+        <button class="pl-more" data-action="tts-close" aria-label="Close voice settings">\u2715 Close</button>
+        ${ttsSlidersHTML()}`;
+      return;
+    }
+    if (reader.state === "idle") { pl.className = ""; pl.innerHTML = ""; document.body.classList.remove("has-player"); return; }
+    pl.className = "show";
+    document.body.classList.add("has-player");
+    pl.innerHTML = `
+      <div class="pl-wave ${reader.state === "playing" ? "on" : ""}" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div class="pl-info"><b>${esc2(reader.title)}</b><span class="pl-progress">${Math.min(reader.idx + 1, reader.queue.length)} / ${reader.queue.length}</span></div>
+      <div class="pl-ctrls">
+        <button data-action="tts-prev" title="Previous part" aria-label="Previous part">⏮︎</button>
+        <button class="pl-main" data-action="tts-toggle" title="${reader.state === "playing" ? "Pause" : "Resume"}" aria-label="${reader.state === "playing" ? "Pause" : "Resume"}">${reader.state === "playing" ? "⏸︎" : "▶︎"}</button>
+        <button data-action="tts-next" title="Next part" aria-label="Next part">⏭︎</button>
+        <button data-action="tts-stop" title="Stop" aria-label="Stop">■︎</button>
+      </div>
+      <label class="pl-opt">Voice <select data-tts="voice">${opts || "<option>Default</option>"}</select></label>
+      <button class="pl-more ${reader.more ? "on" : ""}" data-action="tts-more" title="Speed, pitch and volume" aria-label="Voice settings" aria-expanded="${!!reader.more}">\u2699\uFE0E Voice settings</button>
+      ${reader.more ? ttsSlidersHTML() : ""}`;
+  }
+  function ttsSlidersHTML() {
+    const row = (k, label, min, max, step, fmt) => `<label class="pl-slider"><span>${label}</span><input type="range" data-tts="${k}" min="${min}" max="${max}" step="${step}" value="${TTS[k] ?? 1}"><b data-tts-val="${k}">${fmt(TTS[k] ?? 1)}</b></label>`;
+    return `<div class="pl-panel">
+      ${row("rate", "Speed", 0.5, 2, 0.05, (v) => (+v).toFixed(2) + "\xD7")}
+      ${row("pitch", "Pitch", 0.5, 1.6, 0.05, (v) => (+v < 0.95 ? "lower " : +v > 1.05 ? "higher " : "normal ") + (+v).toFixed(2))}
+      ${row("volume", "Volume", 0.1, 1, 0.05, (v) => Math.round(v * 100) + "%")}
+      <div class="pl-panel-btns"><button class="btn small" data-action="tts-test">\u25B6\uFE0E Test voice</button><button class="btn small ghost" data-action="tts-reset">Reset</button></div>
+    </div>`;
+  }
+  var TTS_FMT = { rate: (v) => (+v).toFixed(2) + "\xD7", pitch: (v) => (+v < 0.95 ? "lower " : +v > 1.05 ? "higher " : "normal ") + (+v).toFixed(2), volume: (v) => Math.round(v * 100) + "%" };
+  function ttsSample() {
+    if (!ttsOK) return;
+    const wasReading = reader.state !== "idle";
+    if (wasReading) { reader.token++; speechSynthesis.cancel(); }
+    const u = new SpeechSynthesisUtterance(TTS_SAMPLE), v = pickVoice();
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = TTS.rate; u.pitch = TTS.pitch; u.volume = TTS.volume;
+    if (wasReading) u.onend = () => { reader.chunk = 0; reader.chunks = splitChunks(reader.queue[reader.idx].text); reader.state = "playing"; renderPlayer(); readSpeak(); };
+    speechSynthesis.speak(u);
+  }
+  function readPage() {
+    const main = $("#main");
+    if (S.ui.view === "ai") {
+      const last = [...main.querySelectorAll(".msg.ai .bubble")].pop();
+      if (last) return readStart(readableBlocks(last), "Claude's latest answer", "msg");
+    }
+    const title = main.querySelector(".vhead h1")?.firstChild?.textContent?.trim() || document.querySelector(".nav button.active")?.innerText.replace(/^\W+/, "") || "This page";
+    readStart(readableBlocks(main), title, "page");
+  }
+  function readMessage(i) {
+    const bub = document.querySelectorAll(".msg")[i]?.querySelector(".bubble");
+    if (bub) readStart(readableBlocks(bub), "Claude's answer", "msg");
+  }
+  if (ttsOK) speechSynthesis.onvoiceschanged = () => { if (reader.state !== "idle") renderPlayer(); };
   var QUICK_ONE = ["Give me a full reading of this chart", "What are their biggest strengths and blind spots?", "Love style and what they need in a partner", "Career, money and purpose", "How does the sidereal chart change the picture vs tropical?", "What do their numerology numbers say?", "Explain their Human Design: type, strategy and authority"];
   var QUICK_MANY = ["Where do we fit and where do we clash?", "How can we work together best?", "Romantic compatibility \u2014 honestly", "Communication: what goes wrong and how to fix it", "Friendship and fun together", "Living together / family life", "Money and shared values", "Numerology compatibility", "Human Design connection chart"];
   function currentThread() {
@@ -30972,7 +31305,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
       <div class="thread-list">${threads || '<p class="muted small pad">Your conversations appear here.</p>'}</div>
     </aside>
     <div class="chat">
-      <div class="chat-people"><span class="muted small">In this conversation:</span> ${chips || '<span class="muted small">Add people first.</span>'}</div>
+      <div class="chat-people"><span class="muted small">In this conversation:</span> ${chips || '<span class="muted small">Add people first.</span>'}${ttsOK ? `<label class="autoread" title="Read Claude's answers aloud as soon as they finish"><input type="checkbox" data-tts="auto" ${TTS.autoRead ? "checked" : ""}> \u{1F50A} Read answers aloud</label>` : ""}</div>
       <div class="messages" id="messages">
         ${msgs || `<div class="chat-empty"><h2>Ask the stars</h2><p class="muted">${people.length ? `Claude can see ${people.length > 1 ? "these charts and how they interact" : "this chart"} \u2014 in both tropical and sidereal.` : "Pick one or more people above, then ask anything."}</p><div class="quick">${people.length ? quick : ""}</div></div>`}
       </div>
@@ -30985,7 +31318,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
   </section>`;
   }
   function msgHTML(m, i = -1) {
-    if (m.role === "assistant" && m.raw && i >= 0) return `<div class="msg ai"><div class="bubble md">${renderMarkdown(m.text || "")}${m.notice ? `<p class="notice">${esc2(m.notice)}</p>` : ""}<div class="msg-actions"><button class="link small" data-action="save-reading" data-i="${i}">${m.savedId ? "\u2714 Saved to profile" : "\u{1F4CC} Save to profile"}</button></div></div></div>`;
+    if (m.role === "assistant" && m.raw && i >= 0) return `<div class="msg ai"><div class="bubble md">${renderMarkdown(m.text || "")}${m.notice ? `<p class="notice">${esc2(m.notice)}</p>` : ""}<div class="msg-actions"><button class="link small" data-action="tts-msg" data-i="${i}">\u{1F50A} Listen</button><button class="link small" data-action="save-reading" data-i="${i}">${m.savedId ? "\u2714 Saved to profile" : "\u{1F4CC} Save to profile"}</button></div></div></div>`;
     if (m.role === "user") return `<div class="msg user"><div class="bubble">${esc2(m.text)}</div></div>`;
     return `<div class="msg ai"><div class="bubble md">${renderMarkdown(m.text || "")}${m.notice ? `<p class="notice">${esc2(m.notice)}</p>` : ""}${m.error ? `<p class="err">${esc2(m.error)}</p>` : ""}</div></div>`;
   }
@@ -31085,6 +31418,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
       t.updatedAt = Date.now();
       await save();
       render();
+      if (TTS.autoRead && reply.raw && S.ui.view === "ai" && S.ui.threadId === t.id) readMessage(t.messages.length - 1);
     }
   }
   function openPersonModal(p = null) {
@@ -31301,6 +31635,53 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
         render();
         send(`Read the Human Design connection between ${person(S.ui.a).name} and ${person(S.ui.b).name}: how their types and authorities interact, the electromagnetic, companionship, compromise and dominance channels, where they attract, where they clash, and how to work together.`);
         break;
+      case "read-page":
+        if (reader.state !== "idle") readStop(); else readPage();
+        break;
+      case "tts-more":
+        reader.more = !reader.more;
+        renderPlayer();
+        break;
+      case "tts-test":
+        ttsSample();
+        break;
+      case "tts-reset":
+        Object.assign(TTS, { rate: 1, pitch: 1, volume: 1, voice: "" });
+        store.set("tts", TTS);
+        renderPlayer();
+        if (reader.state !== "idle") { reader.token++; speechSynthesis.cancel(); reader.chunk = 0; reader.state = "playing"; readSpeak(); }
+        break;
+      case "tts-toggle":
+        readPauseToggle();
+        break;
+      case "tts-stop":
+        reader.more = false;
+        readStop();
+        break;
+      case "tts-close":
+        reader.more = false;
+        renderPlayer();
+        break;
+      case "tts-settings":
+        reader.more = reader.state === "idle" ? !reader.more : true;
+        renderPlayer();
+        break;
+      case "tts-prev":
+        readJump(-1);
+        break;
+      case "tts-next":
+        readJump(1);
+        break;
+      case "tts-msg":
+        readMessage(+el.dataset.i);
+        break;
+      case "tts-saved": {
+        e.preventDefault();
+        const det = el.closest("details");
+        det.open = true;
+        readStart(readableBlocks(det.querySelector(".md")), det.querySelector("summary b").textContent, "saved");
+        break;
+      }
       case "select-today":
         S.ui.selectedId = id;
         save();
@@ -31362,6 +31743,45 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
         break;
       case "report-group":
         openReport("group", S.ui.group || []);
+        break;
+      case "toggle-act":
+        el.classList.toggle("on");
+        break;
+      case "add-activity": {
+        const name = (prompt("Name of your activity (e.g. yoga, guitar, therapy):") || "").trim().slice(0, 24);
+        if (!name) return;
+        const icon = (prompt("Pick an emoji for it:", "\u2B50") || "\u2B50").trim().slice(0, 4);
+        const f = $("#journal-form");
+        if (f) { S.ui.jdraftMood = +(f.querySelector("input[name=mood]:checked")?.value || 0); S.ui.jdraftActs = [...f.querySelectorAll(".act.on")].map((b2) => b2.dataset.act); S.ui.jdraftText = f.text.value; }
+        const act = { id: "c-" + uid(), name, icon };
+        S.settings.customActivities = [...S.settings.customActivities || [], act];
+        S.ui.jdraftActs = [...S.ui.jdraftActs || [], act.id];
+        await save();
+        render();
+        break;
+      }
+      case "jtab":
+        S.ui.jtab = el.dataset.tab;
+        save();
+        render();
+        break;
+      case "jmonth":
+        S.ui.jmonth = el.dataset.m;
+        save();
+        render();
+        break;
+      case "new-entry":
+        S.ui.jform = true;
+        render();
+        break;
+      case "edit-entry":
+        S.ui.jedit = id;
+        render();
+        $("#main").scrollTop = 0;
+        break;
+      case "cancel-edit":
+        S.ui.jedit = null;
+        render();
         break;
       case "del-entry":
         if (!confirm("Delete this journal entry?")) return;
@@ -31477,15 +31897,49 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     e.preventDefault();
     const f = e.target, p = person(S.ui.selectedId);
     if (!p) return;
-    const date = f.date.value || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10), text = f.text.value.trim(), mood = +(f.mood.value || 3);
-    if (!text && !confirm("Save a mood-only entry without notes?")) return;
-    const sky = skyNote(p, /* @__PURE__ */ new Date(date + "T12:00:00"));
-    S.journal.push({ id: uid(), personId: p.id, date, text, mood, sky, created: Date.now() });
+    const mood = +(f.querySelector("input[name=mood]:checked")?.value || 0);
+    if (!mood) { toast("Pick a mood first."); return; }
+    const date = f.date.value || dkey(/* @__PURE__ */ new Date()), time = f.time.value || "", text = f.text.value.trim();
+    const activities = [...f.querySelectorAll(".act.on")].map((b2) => b2.dataset.act);
+    const d = /* @__PURE__ */ new Date(date + "T" + (time || "12:00") + ":00"), m = moonToday(d);
+    const sky = { sky: skyNote(p, d), moonSign: m.sign, moonPhase: m.phase, pday: numerology(p, numSys(), d).personalDay };
+    const editId = f.dataset.edit;
+    if (editId) {
+      const ex = S.journal.find((x) => x.id === editId);
+      if (ex) Object.assign(ex, { date, time, mood, text, activities, ...sky, edited: Date.now() });
+      S.ui.jedit = null;
+      toast("Entry updated.");
+    } else {
+      S.journal.push({ id: uid(), personId: p.id, date, time, mood, text, activities, ...sky, created: Date.now() });
+      toast(`${MOODS[mood].face} Logged — with the sky for that day.`);
+    }
+    S.ui.jdraftMood = 0; S.ui.jdraftActs = []; S.ui.jdraftText = ""; S.ui.jform = false;
     await save();
     render();
-    toast("Journal entry saved with today's sky.");
+  });
+  // Mood pick enables the rest of the form without re-rendering (keeps the note and tags in place).
+  document.addEventListener("input", (e) => {
+    const tk = e.target.dataset?.tts;
+    if (tk && TTS_FMT[tk]) { const lab = document.querySelector(`[data-tts-val="${tk}"]`); if (lab) lab.textContent = TTS_FMT[tk](e.target.value); }
+    if (e.target.name === "mood" && e.target.closest("#journal-form")) {
+      const f = e.target.closest("#journal-form");
+      f.querySelectorAll(".mp").forEach((l) => l.classList.toggle("on", l.contains(e.target)));
+      f.querySelector(".jacts").classList.remove("dim");
+      f.querySelector("button.primary").disabled = false;
+    }
   });
   document.addEventListener("change", (e) => {
+    const tk = e.target.dataset?.tts;
+    if (tk) {
+      if (tk === "rate") TTS.rate = +e.target.value;
+      if (tk === "pitch") TTS.pitch = +e.target.value;
+      if (tk === "volume") TTS.volume = +e.target.value;
+      if (tk === "voice") TTS.voice = e.target.value;
+      if (tk === "auto") TTS.autoRead = e.target.checked;
+      store.set("tts", TTS);
+      if (["rate", "voice", "pitch", "volume"].includes(tk) && reader.state !== "idle") { const keep = reader.idx; reader.token++; speechSynthesis.cancel(); reader.idx = keep; reader.chunk = 0; reader.chunks = splitChunks(reader.queue[keep].text); reader.state = "playing"; renderPlayer(); readSpeak(); }
+      return;
+    }
     const s = e.target.dataset.setting;
     if (s) {
       S.settings[s] = e.target.value;
@@ -31512,6 +31966,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     save();
   }, true);
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && reader.state !== "idle" && !$("#modal").classList.contains("open")) readStop();
     if (e.key === "Escape" && $("#modal").classList.contains("open")) closeModal();
   });
   (async () => {
@@ -31519,7 +31974,9 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     S.threads = await store.get("threads", []);
     S.journal = await store.get("journal", []);
     S.saved = await store.get("saved", []);
+    Object.assign(TTS, await store.get("tts", {}));
     if (location.hash === "#today") S.ui.view = "today";
+    if (location.hash === "#journal") { S.ui.view = "journal"; S.ui.jform = true; }
     S.settings = { ...DEFAULT_SETTINGS, ...await store.get("settings", {}) };
     S.ui = { ...S.ui, ...await store.get("ui", {}) };
     if (!person(S.ui.selectedId)) S.ui.selectedId = S.profiles[0]?.id || null;
@@ -31540,6 +31997,12 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
       if (changes.threads && !busy) {
         S.threads = changes.threads.newValue || [];
         changed = true;
+      }
+      if (changes.tts) {
+        Object.assign(TTS, changes.tts.newValue || {});
+        const cb = document.querySelector('[data-tts="auto"]');
+        if (cb) cb.checked = !!TTS.autoRead;
+        if (reader.state !== "idle") renderPlayer();
       }
       if (changed && !$("#modal").classList.contains("open")) render();
     });

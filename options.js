@@ -1,5 +1,5 @@
 // Astrolabe settings page: edits chrome.storage.local "settings" and saves/loads a config file.
-const DEFAULTS = { apiKey: '', model: 'claude-opus-5-5', effort: 'medium', zodiac: 'tropical', ayanamsa: 'lahiri', houses: 'placidus', siderealHouses: 'whole', numerology: 'pythagorean', notify: false, notifyTime: '08:00', notifyPeople: [] };
+const DEFAULTS = { apiKey: '', model: 'claude-opus-5-5', effort: 'medium', zodiac: 'tropical', ayanamsa: 'lahiri', houses: 'placidus', siderealHouses: 'whole', numerology: 'pythagorean', notify: false, notifyTime: '08:00', notifyPeople: [], journalRemind: false, journalTime: '21:00' };
 const HOUSES = { placidus: 'Placidus', whole: 'Whole Sign', equal: 'Equal', porphyry: 'Porphyry', koch: 'Koch' };
 const form = document.getElementById('form');
 const statusEl = document.getElementById('status');
@@ -108,3 +108,42 @@ document.getElementById('import').addEventListener('change', async e => {
 window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 get('settings').then(({ settings }) => fill(settings || {}));
 refreshCounts();
+
+// ---- Voice & reading (stored separately under "tts"; the app picks changes up live) ----
+const TTS_DEFAULT = { voice: '', rate: 1, pitch: 1, volume: 1, autoRead: false };
+let tts = { ...TTS_DEFAULT };
+const $id = (x) => document.getElementById(x);
+const fmt = { rate: (v) => (+v).toFixed(2) + '×', pitch: (v) => (+v < 0.95 ? 'lower ' : +v > 1.05 ? 'higher ' : 'normal ') + (+v).toFixed(2), volume: (v) => Math.round(v * 100) + '%' };
+function fillVoices() {
+  if (typeof speechSynthesis === 'undefined') { $id('voice-card').insertAdjacentHTML('beforeend', '<p class="status bad">This browser has no text-to-speech voices.</p>'); return; }
+  const all = $id('tts-all').checked, lang = (navigator.language || 'en').split('-')[0];
+  const vs = speechSynthesis.getVoices().filter((v) => all || v.lang.toLowerCase().startsWith(lang) || v.voiceURI === tts.voice)
+    .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
+  $id('tts-voice').innerHTML = '<option value="">Automatic (best voice for my language)</option>' + vs.map((v) => `<option value="${v.voiceURI.replace(/"/g, '&quot;')}" ${v.voiceURI === tts.voice ? 'selected' : ''}>${v.name.replace(/[<>&]/g, '')} · ${v.lang}${/enhanced|premium|natural|neural/i.test(v.name) ? ' ★' : ''}${v.localService ? '' : ' (online)'}</option>`).join('');
+}
+function fillTTS() {
+  for (const k of ['rate', 'pitch', 'volume']) { $id('tts-' + k).value = tts[k]; $id('tts-' + k + '-v').textContent = fmt[k](tts[k]); }
+  $id('tts-auto').checked = !!tts.autoRead;
+  fillVoices();
+}
+async function saveTTS() { await set({ tts }); status('Voice settings saved ✓'); }
+for (const k of ['rate', 'pitch', 'volume']) {
+  $id('tts-' + k).addEventListener('input', (e) => { $id('tts-' + k + '-v').textContent = fmt[k](e.target.value); e.stopPropagation(); });
+  $id('tts-' + k).addEventListener('change', (e) => { tts[k] = +e.target.value; saveTTS(); e.stopPropagation(); });
+}
+for (const id of ['tts-voice', 'tts-auto', 'tts-all']) $id(id).addEventListener('input', (e) => e.stopPropagation(), true);
+$id('tts-voice').addEventListener('change', (e) => { tts.voice = e.target.value; saveTTS(); });
+$id('tts-auto').addEventListener('change', (e) => { tts.autoRead = e.target.checked; saveTTS(); });
+$id('tts-all').addEventListener('change', fillVoices);
+$id('tts-reset').addEventListener('click', () => { tts = { ...TTS_DEFAULT, autoRead: tts.autoRead }; fillTTS(); saveTTS(); });
+$id('tts-test').addEventListener('click', () => {
+  if (typeof speechSynthesis === 'undefined') return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance("Hi! I'm your Astrolabe reader. This is how I'll sound when I read your charts and readings.");
+  const v = speechSynthesis.getVoices().find((x) => x.voiceURI === tts.voice);
+  if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = tts.rate; u.pitch = tts.pitch; u.volume = tts.volume;
+  speechSynthesis.speak(u);
+});
+if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = fillVoices;
+get('tts').then(({ tts: saved }) => { tts = { ...TTS_DEFAULT, ...(saved || {}) }; fillTTS(); });
