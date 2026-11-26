@@ -64,6 +64,16 @@
       <label class="check"><input type="checkbox" id="tts-auto"> Read Claude's answers aloud automatically</label>
       <div class="row"><button type="button" class="btn" id="tts-test">▶︎ Test voice</button><button type="button" class="btn ghost" id="tts-reset">Reset voice settings</button></div>
       <p class="muted small" style="margin:0">Tip: macOS has extra high-quality voices — System Settings → Accessibility → Spoken Content → System voice → Manage Voices. Download one (e.g. an “Enhanced” or “Premium” voice), then restart Chrome and pick it here.</p>
+      <h4 style="margin:10px 0 0">🎤 Voice typing</h4>
+      <p class="muted small" style="margin:0">Tap the 🎤 in any text box (journal notes, dreams, the chat) to speak instead of typing. Say “period”, “comma”, “question mark” or “new line” for punctuation. Chrome sends the audio to Google's speech service to turn it into text, so it needs an internet connection.</p>
+      <label>Language I speak<select id="mic-lang">
+        <option value="">Same as my browser</option>
+        <option value="en-US">English (US)</option><option value="en-GB">English (UK)</option><option value="en-AU">English (Australia)</option><option value="en-IN">English (India)</option>
+        <option value="ar-SA">العربية — Arabic</option><option value="fr-FR">Français</option><option value="es-ES">Español (España)</option><option value="es-MX">Español (México)</option>
+        <option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="pt-BR">Português (Brasil)</option><option value="pt-PT">Português (Portugal)</option>
+        <option value="nl-NL">Nederlands</option><option value="tr-TR">Türkçe</option><option value="ru-RU">Русский</option><option value="hi-IN">हिन्दी — Hindi</option>
+        <option value="ja-JP">日本語</option><option value="ko-KR">한국어</option><option value="zh-CN">中文 (普通话)</option>
+      </select></label>
     </section>
 
     <section class="card">
@@ -102,7 +112,7 @@
       <h3>Config file</h3>
       <p class="muted small" style="margin:0">Save your config to a file to back it up or move it to another computer, then load it here.</p>
       <label class="check"><input type="checkbox" id="with-key"> Include my API key in the file</label>
-      <label class="check"><input type="checkbox" id="with-data" checked> Include people and conversations</label>
+      <label class="check"><input type="checkbox" id="with-data" checked> Include people, conversations, journal and dreams</label>
       <div class="row">
         <button type="button" class="btn" id="export">Save config to file…</button>
         <label class="btn ghost" style="display:inline-flex;color:var(--text)">Load config from file…<input type="file" id="import" accept="application/json,.json" hidden></label>

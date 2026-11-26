@@ -25,12 +25,24 @@ A Chrome extension for birth charts and relationship astrology. You keep profile
   - **Tabs:** an entries timeline; a month calendar plus "Year in Pixels"; and stats. The stats show your mood over 30 days, a count of each mood, your streaks, how much each activity lifts or lowers your mood, and your mood by Moon sign, Moon phase and personal day.
   - **Daily reminder:** optional, and skipped on days you've already logged.
   - **AI:** Claude reads the entries and stats, and the **Find patterns** button asks it to connect them.
+- **☾ Dreams:** a dream journal with interpretation.
+  - **Recording:** a title, the dream itself, how it felt (14 feelings), lucid / nightmare / recurring flags, clarity, and an optional note on what's going on in your life.
+  - **Symbols:** about 60 common dream symbols (water, falling, teeth, a house, being chased…) are spotted as you type. Each comes with its usual meaning in dream psychology and its link in astrology. A searchable dictionary sits in the Symbols tab, with your most frequent symbols on top.
+  - **The sky that night:** each dream records the Moon's sign, phase and the house of your chart it was in around 3 a.m., whether it was near your lunar return, your strongest transits and your numerology day.
+  - **Your dream chart:** a dream-sensitivity score and the placements behind it (the Moon, Neptune, the 12th house, Pisces and the water element), plus how your Moon sign tends to dream.
+  - **Dreams & the Moon:** how many dreams you remember by Moon phase and sign, and the mix of lucid dreams and nightmares.
+  - **AI:** **Interpret this dream** streams a personal reading from Claude that uses the dream, your feelings, your life context, your birth chart and the sky that night. It's saved with the dream, can be read aloud, and **Keep talking about it** continues it in the chat. **Find dream patterns** looks across all your dreams. Claude also sees your recent dreams in every chat.
 - **🔊 Read aloud:**
   - **Where:** a **Read this page** button at the top of every screen, plus **Listen** on every Claude answer and saved reading.
   - **Player:** a bar with pause, previous/next, stop and voice. The part being read is highlighted and scrolled into view.
   - **Voice settings:** the ⚙ next to "Read this page", or "Voice settings" in the player, tunes speed (0.5–2×), pitch, volume and voice, with a test button. The same controls are under Settings → Voice & reading.
   - **Auto-read:** an optional toggle in the chat reads Claude's answers as soon as they finish.
   - **Voices:** Chrome's and macOS's own voices, so it's free, private and works offline. Esc stops it.
+- **🎤 Voice typing:** every text box (journal notes, dreams, the chat, person notes) has a mic button. Tap it and speak; the words appear as you talk. It keeps listening through pauses until you tap it again or press Esc. If Chrome refuses the microphone, a message says why.
+  - **Punctuation:** say "period", "comma", "question mark", "exclamation mark", "new line" or "new paragraph".
+  - **Language:** Settings → Voice & reading → Voice typing (defaults to the browser's language).
+  - **Privacy:** when the browser offers on-device recognition (newer Chrome), speech stays on your computer; otherwise Chrome uses Google's speech service, which needs internet. The first time, the browser asks to allow the microphone.
+  - **Brave and other Chromium browsers** don't include Google's speech service. The 🎤 button then explains how to use the Mac's own dictation instead (press the 🌐 fn key twice in any text box), or to load Astrolabe in Chrome.
 - **⇩ Reports:** on Birth chart, Compatibility and Group, prints a clean light-theme report. Choose "Save as PDF" in the print dialog to keep it.
 - **Extras:**
   - **Chinese zodiac:** the animal and element based on the exact lunar new year date, plus Chinese compatibility for couples.
@@ -82,7 +94,7 @@ You can open the settings page three ways:
 The settings page is where you save:
 - **Your Anthropic API key**, the model and the reading depth.
 - **Chart defaults:** zodiac, ayanamsa, the house systems for tropical and sidereal, and the numerology system.
-- **A config file.** **Save config to file…** downloads a JSON backup. The API key and your people and conversations are each optional in that file. **Load config from file…** restores a backup. It merges people and conversations, and it keeps your current API key if the file doesn't include one.
+- **A config file.** **Save config to file…** downloads a JSON backup. The API key and your data (people, conversations, journal, dreams and saved readings) are each optional in that file. **Load config from file…** restores a backup. It merges the data without duplicates, and it keeps your current API key if the file doesn't include one.
 
 Everything is stored locally in Chrome's extension storage. The API key is only ever sent to api.anthropic.com.
 

@@ -58,11 +58,11 @@ document.getElementById('toggle-key').addEventListener('click', e => {
 });
 
 document.getElementById('export').addEventListener('click', async () => {
-  const { settings = {}, profiles = [], threads = [] } = await get(['settings', 'profiles', 'threads']);
+  const { settings = {}, profiles = [], threads = [], journal = [], dreams = [], saved = [] } = await get(['settings', 'profiles', 'threads', 'journal', 'dreams', 'saved']);
   const cfg = { ...DEFAULTS, ...settings, ...(dirty ? read() : {}) };
   if (!document.getElementById('with-key').checked) delete cfg.apiKey;
   const file = { app: 'astrolabe', version: 1, exportedAt: new Date().toISOString(), settings: cfg };
-  if (document.getElementById('with-data').checked) Object.assign(file, { profiles, threads });
+  if (document.getElementById('with-data').checked) Object.assign(file, { profiles, threads, journal, dreams, saved });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
   a.download = `astrolabe-config-${new Date().toISOString().slice(0, 10)}.json`;
@@ -77,7 +77,7 @@ document.getElementById('import').addEventListener('change', async e => {
   try {
     const j = JSON.parse(await f.text());
     if (j.app !== 'astrolabe' && !j.settings && !Array.isArray(j.profiles)) throw new Error('This isn’t an Astrolabe config file.');
-    const cur = await get(['settings', 'profiles', 'threads']);
+    const cur = await get(['settings', 'profiles', 'threads', 'journal', 'dreams', 'saved']);
     const update = {};
     const msgs = [];
     if (j.settings && typeof j.settings === 'object') {
@@ -98,6 +98,13 @@ document.getElementById('import').addEventListener('change', async e => {
       update.threads = [...(cur.threads || []), ...add];
       msgs.push(`${add.length} conversation${add.length === 1 ? '' : 's'}`);
     }
+    for (const [k, label] of [['journal', 'journal entr'], ['dreams', 'dream'], ['saved', 'saved reading']]) {
+      if (!Array.isArray(j[k])) continue;
+      const ids = new Set((cur[k] || []).map(x => x.id));
+      const add = j[k].filter(x => x && x.id && !ids.has(x.id));
+      update[k] = [...(cur[k] || []), ...add];
+      if (add.length) msgs.push(`${add.length} ${label}${k === 'journal' ? (add.length === 1 ? 'y' : 'ies') : add.length === 1 ? '' : 's'}`);
+    }
     await set(update);
     if (update.settings) fill(update.settings);
     refreshCounts();
@@ -110,7 +117,7 @@ get('settings').then(({ settings }) => fill(settings || {}));
 refreshCounts();
 
 // ---- Voice & reading (stored separately under "tts"; the app picks changes up live) ----
-const TTS_DEFAULT = { voice: '', rate: 1, pitch: 1, volume: 1, autoRead: false };
+const TTS_DEFAULT = { voice: '', rate: 1, pitch: 1, volume: 1, autoRead: false, micLang: '' };
 let tts = { ...TTS_DEFAULT };
 const $id = (x) => document.getElementById(x);
 const fmt = { rate: (v) => (+v).toFixed(2) + '×', pitch: (v) => (+v < 0.95 ? 'lower ' : +v > 1.05 ? 'higher ' : 'normal ') + (+v).toFixed(2), volume: (v) => Math.round(v * 100) + '%' };
@@ -124,6 +131,7 @@ function fillVoices() {
 function fillTTS() {
   for (const k of ['rate', 'pitch', 'volume']) { $id('tts-' + k).value = tts[k]; $id('tts-' + k + '-v').textContent = fmt[k](tts[k]); }
   $id('tts-auto').checked = !!tts.autoRead;
+  $id('mic-lang').value = tts.micLang || '';
   fillVoices();
 }
 async function saveTTS() { await set({ tts }); status('Voice settings saved ✓'); }
@@ -131,11 +139,12 @@ for (const k of ['rate', 'pitch', 'volume']) {
   $id('tts-' + k).addEventListener('input', (e) => { $id('tts-' + k + '-v').textContent = fmt[k](e.target.value); e.stopPropagation(); });
   $id('tts-' + k).addEventListener('change', (e) => { tts[k] = +e.target.value; saveTTS(); e.stopPropagation(); });
 }
-for (const id of ['tts-voice', 'tts-auto', 'tts-all']) $id(id).addEventListener('input', (e) => e.stopPropagation(), true);
+for (const id of ['tts-voice', 'tts-auto', 'tts-all', 'mic-lang']) $id(id).addEventListener('input', (e) => e.stopPropagation(), true);
 $id('tts-voice').addEventListener('change', (e) => { tts.voice = e.target.value; saveTTS(); });
 $id('tts-auto').addEventListener('change', (e) => { tts.autoRead = e.target.checked; saveTTS(); });
+$id('mic-lang').addEventListener('change', (e) => { tts.micLang = e.target.value; saveTTS(); });
 $id('tts-all').addEventListener('change', fillVoices);
-$id('tts-reset').addEventListener('click', () => { tts = { ...TTS_DEFAULT, autoRead: tts.autoRead }; fillTTS(); saveTTS(); });
+$id('tts-reset').addEventListener('click', () => { tts = { ...TTS_DEFAULT, autoRead: tts.autoRead, micLang: tts.micLang }; fillTTS(); saveTTS(); });
 $id('tts-test').addEventListener('click', () => {
   if (typeof speechSynthesis === 'undefined') return;
   speechSynthesis.cancel();

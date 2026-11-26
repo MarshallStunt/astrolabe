@@ -3829,7 +3829,7 @@ How to answer:
 - Treat astrology as a lens for reflection, not fate. Be warm and direct; skip disclaimers unless something is genuinely sensitive (health, legal, money decisions).
 - Numerology numbers are listed with each person. Weave them in when they add insight, or go deep when asked about numerology; note when a name number is approximate because the full birth name is missing.
 - Human Design data is listed with each person (and connection data for pairs). Use it when asked about Human Design, decisions, energy or relationships, and blend it with astrology and numerology when it adds insight.
-- Each person also has today\'s transits, Chinese zodiac, Gene Keys, a life timeline (Vedic dasha, upcoming returns) and possibly a personal journal with moods and the sky on each day. Use the journal to spot patterns between moods and transits when asked, and to personalize advice.
+- Each person also has today\'s transits, Chinese zodiac, Gene Keys, a life timeline (Vedic dasha, upcoming returns) and possibly a personal journal with moods and the sky on each day, and a dream journal (with the sky each night). Use the journal to spot patterns between moods and transits when asked, and to personalize advice.
 - Use Markdown with short headings and bullets. Keep it readable; go deep when asked.`;
   var fmtOrb = (o) => `${Math.floor(o)}\xB0${String(Math.round(o % 1 * 60)).padStart(2, "0")}\u2032`;
   function chartBlock(profile, chart) {
@@ -29614,12 +29614,12 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
     }
   };
   var DEFAULT_SETTINGS = { apiKey: "", model: "claude-opus-5-5", effort: "medium", zodiac: "tropical", ayanamsa: "lahiri", houses: "placidus", siderealHouses: "whole", numerology: "pythagorean" };
-  var S = { profiles: [], threads: [], journal: [], saved: [], settings: { ...DEFAULT_SETTINGS }, ui: { view: "chart", selectedId: null, a: null, b: null, threadId: null } };
+  var S = { profiles: [], threads: [], journal: [], saved: [], dreams: [], settings: { ...DEFAULT_SETTINGS }, ui: { view: "chart", selectedId: null, a: null, b: null, threadId: null } };
   var busy = null;
   var $ = (sel, root = document) => root.querySelector(sel);
   var esc2 = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   var uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-  var save = () => { scheduleForecast(); return Promise.all([store.set("profiles", S.profiles), store.set("threads", S.threads), store.set("settings", S.settings), store.set("ui", S.ui), store.set("journal", S.journal), store.set("saved", S.saved)]); };
+  var save = () => { scheduleForecast(); return Promise.all([store.set("profiles", S.profiles), store.set("threads", S.threads), store.set("settings", S.settings), store.set("ui", S.ui), store.set("journal", S.journal), store.set("saved", S.saved), store.set("dreams", S.dreams)]); };
   var person = (id) => S.profiles.find((p) => p.id === id);
   var chartOpts = (zodiac = S.settings.zodiac) => ({ zodiac, ayanamsa: S.settings.ayanamsa, houses: zodiac === "sidereal" ? S.settings.siderealHouses : S.settings.houses });
   var chartCache = /* @__PURE__ */ new Map();
@@ -29637,6 +29637,8 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
     toast.t = setTimeout(() => t.classList.remove("show"), 3200);
   }
   function render() {
+    micStop(true);
+    setTimeout(addMics, 0);
     if (reader.state !== "idle") readStop(); else if (reader.more) setTimeout(renderPlayer, 0);
     renderSidebar();
     renderTopbar();
@@ -29650,6 +29652,7 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
     else if (S.ui.view === "group") main.innerHTML = groupView();
     else if (S.ui.view === "timeline") main.innerHTML = timelineView();
     else if (S.ui.view === "journal") main.innerHTML = journalView();
+    else if (S.ui.view === "dreams") main.innerHTML = dreamsView();
     else if (S.ui.view === "compat") main.innerHTML = compatView();
     else if (S.ui.view === "num") main.innerHTML = numView();
     else if (S.ui.view === "hd") main.innerHTML = hdView();
@@ -29665,7 +29668,7 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
       return x ? `<span title="${k} in ${x.sign}">${GLYPH[k] === "AC" ? "\u2191" : GLYPH[k]}${SIGN_GLYPH[x.signIndex]}</span>` : "";
     }).join("");
   }
-  var PERSON_VIEWS = ["chart", "num", "hd", "today", "timeline", "journal"];
+  var PERSON_VIEWS = ["chart", "num", "hd", "today", "timeline", "journal", "dreams"];
   function renderSidebar() {
     const list = S.profiles.map((p) => `
     <button class="person ${p.id === S.ui.selectedId && PERSON_VIEWS.includes(S.ui.view) ? "active" : ""}" data-action="select" data-id="${p.id}">
@@ -31034,10 +31037,314 @@ Please migrate to a newer model. Visit https://docs.anthropic.com/en/docs/resour
       return `Chinese zodiac: ${cz.element} ${cz.animal} (${cz.yin ? "yin" : "yang"}, lunar year ${cz.year}).
 Gene Keys prime gifts: ${gk.map((g) => `${g.name} ${g.key}.${g.line} (${g.spectrum.join(" → ")})`).join("; ")}.
 Current transits (today ${now.toISOString().slice(0, 10)}): ${tr.map((x) => `${x.tb} ${x.type} natal ${x.tk} (orb ${x.orb.toFixed(1)}\xB0, ${x.orb < 0.3 ? "exact now" : (x.applying ? "applying, exact " : "separating, was exact ") + x.exact.toISOString().slice(0, 10)})`).join("; ") || "none tight"}.
-Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start.toISOString().slice(0, 10)} to ${cd.end.toISOString().slice(0, 10)})` : "?"}; upcoming: ${ev.map((e) => `${e.text.split(" — ")[0]} ~${e.date.toISOString().slice(0, 7)}`).join(", ")}.${journalContext(p)}`;
+Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start.toISOString().slice(0, 10)} to ${cd.end.toISOString().slice(0, 10)})` : "?"}; upcoming: ${ev.map((e) => `${e.text.split(" — ")[0]} ~${e.date.toISOString().slice(0, 7)}`).join(", ")}.${journalContext(p)}${dreamContext(p)}`;
     } catch (e) { return ""; }
   }
 
+  // ---------- Dreams (dream journal + symbol dictionary + the sky that night + Claude interpretation) ----------
+  // Each symbol: [id, icon, label, keywords, meaning, astro link]. Keywords match whole words, plus simple plural/verb endings.
+  var DREAM_SYMBOLS = [
+    ["water", "\u{1F30A}", "Water / ocean", "water|ocean|sea|wave|lake|river|swim|swimming|flood|rain|pool", "Your emotional state. Calm, clear water means feelings are settled; rough, dark or rising water means something emotional is building or overwhelming you.", "Moon, Neptune, water signs"],
+    ["falling", "\u{1FA82}", "Falling", "fall|falling|fell|drop|dropped|dropping|plunge", "Losing control or footing somewhere in waking life — a situation that feels unsupported, or fear of failing.", "Saturn (security), Neptune (letting go)"],
+    ["flying", "\u{1F54A}\uFE0F", "Flying", "fly|flying|flew|float|floating|soar|soaring|levitate", "Freedom, rising above a problem, or a fresh perspective. Struggling to stay up can mean self-doubt about a new ambition.", "Jupiter, Sagittarius, Uranus"],
+    ["chased", "\u{1F3C3}", "Being chased", "chase|chased|chasing|pursue|pursued|hunted|running away|ran away|escape|escaping", "Avoiding something — a feeling, a conversation or a part of yourself. Who or what chases you is usually the clue.", "Mars, Pluto, the 12th house"],
+    ["teeth", "\u{1F9B7}", "Teeth falling out", "tooth|teeth", "Worry about how you come across, ageing, losing power or saying the wrong thing. Very common in times of change.", "Saturn (bones and teeth), Capricorn"],
+    ["death", "\u{1F940}", "Death / dying", "death|die|dying|died|dead|funeral|grave|corpse|killed", "Rarely literal. An ending that makes room for something new — a habit, role or chapter of life is closing.", "Pluto, Scorpio, the 8th house"],
+    ["baby", "\u{1F476}", "Baby / pregnancy", "baby|babies|pregnant|pregnancy|birth|newborn|infant", "Something new and fragile is growing — an idea, project, relationship or new side of yourself that needs care.", "Moon, Cancer, the 5th house"],
+    ["house", "\u{1F3E0}", "House / rooms", "house|home|room|rooms|attic|basement|hallway|apartment|bedroom|kitchen", "The house is often you. New rooms = undiscovered talents; the basement = the hidden or the past; the attic = memories and ideas.", "Moon, the 4th house, Cancer"],
+    ["school", "\u{1F3EB}", "School / exam", "school|exam|test|teacher|class|classroom|unprepared|homework|university", "Feeling tested or judged; worry about being unprepared. Often shows up when you are being evaluated at work or in life.", "Saturn, Mercury, the 9th house"],
+    ["naked", "\u{1F648}", "Naked in public", "naked|nude|undressed|no clothes", "Vulnerability and fear of being exposed or seen as you are. Sometimes a wish to be authentic without a mask.", "Ascendant, Venus, Leo"],
+    ["late", "\u23F0", "Being late / missing", "late|miss|missed|missing the|train|bus|plane|flight|airport|clock", "Fear of missing an opportunity or running out of time; feeling that life is moving faster than you are.", "Saturn (time), Mercury"],
+    ["car", "\u{1F697}", "Car / driving", "car|drive|driving|drove|crash|brakes|steering|road|highway", "How you steer your life. Who drives matters — out of control or someone else at the wheel points to who is in charge of your direction.", "Mars, Mercury, the 3rd house"],
+    ["snake", "\u{1F40D}", "Snake", "snake|serpent|viper|cobra|python", "Transformation, healing or hidden fear. A snake shedding skin is renewal; a bite can be a warning about a person or temptation.", "Pluto, Scorpio, the 8th house"],
+    ["dog", "\u{1F415}", "Dog", "dog|puppy|puppies", "Loyalty, friendship and instinct. A friendly dog = support; an aggressive one = a relationship or instinct you're at odds with.", "Venus, the 6th and 11th houses"],
+    ["cat", "\u{1F408}", "Cat", "cat|kitten|kitty", "Independence, intuition and the feminine. A cat can also mean something you can't quite control or trust.", "Moon, Venus"],
+    ["spider", "\u{1F577}\uFE0F", "Spider", "spider|web|cobweb", "Creativity and patience — or feeling trapped in a web, often a situation or a controlling person.", "Pluto, Neptune"],
+    ["animal", "\u{1F43E}", "Wild animals", "lion|tiger|bear|wolf|wolves|shark|bull|horse|monster|beast|creature", "Raw instincts and power. The animal's mood shows how you relate to your own anger, desire or strength.", "Mars, Leo, the 1st house"],
+    ["bird", "\u{1F426}", "Birds", "bird|birds|eagle|owl|crow|raven|feather|wings", "Messages, freedom and higher perspective. Owls = wisdom, crows = change, a caged bird = feeling restricted.", "Mercury, Uranus, Aquarius"],
+    ["fire", "\u{1F525}", "Fire", "fire|burn|burning|flame|flames|smoke|explosion", "Passion, anger or purification. Fire can destroy or renew — notice whether it warms you or threatens you.", "Mars, Sun, fire signs"],
+    ["storm", "\u26C8\uFE0F", "Storm / disaster", "storm|tornado|hurricane|earthquake|tsunami|lightning|thunder|apocalypse|end of the world", "Upheaval — big emotions or sudden change. Often appears when life is shaking up old structures.", "Uranus, Pluto"],
+    ["lost", "\u{1F9ED}", "Being lost", "lost|maze|can't find|cannot find|couldn't find|wandering|searching|looking for", "Uncertainty about direction, identity or a decision. Searching for something specific shows what you feel is missing.", "Neptune, the 12th house, North Node"],
+    ["trapped", "\u{1F512}", "Trapped / paralysed", "trapped|stuck|locked|cage|caged|paralyzed|paralysed|can't move|cannot move|couldn't move|frozen", "Feeling stuck in a situation, job or relationship. Sleep paralysis dreams are also common when stressed or sleep-deprived.", "Saturn, Pluto, the 12th house"],
+    ["ex", "\u{1F494}", "Ex-partner", "ex|ex-boyfriend|ex-girlfriend|ex-husband|ex-wife|former partner|old flame", "Usually not about them — about a feeling, lesson or part of you from that time that is active again.", "Venus, the 7th house, Saturn"],
+    ["partner", "\u{1F491}", "Partner / love", "kiss|kissing|wedding|married|marry|love|lover|boyfriend|girlfriend|husband|wife|date|romance", "Union and desire — merging with qualities you admire. A wedding can mean a commitment to a new path, not only a person.", "Venus, the 7th and 5th houses"],
+    ["cheating", "\u{1F3AD}", "Cheating / betrayal", "cheat|cheating|cheated|affair|betray|betrayed|betrayal|unfaithful", "Insecurity or fear of being left out — or feeling that you are neglecting yourself or a commitment.", "Venus, Neptune, the 7th house"],
+    ["family", "\u{1F46A}", "Family", "mother|mom|mum|father|dad|sister|brother|grandma|grandmother|grandpa|grandfather|family|parents|aunt|uncle|cousin", "Inherited patterns and roots. Mother figures often reflect nurturing and the Moon; fathers reflect authority and Saturn or the Sun.", "Moon (mother), Saturn/Sun (father), the 4th house"],
+    ["deceased", "\u{1F56F}\uFE0F", "Someone who has passed", "passed away|deceased|late grandmother|late grandfather|ghost|spirit|visitation", "A visitation dream — comfort, unfinished feelings, or a quality of that person you're being reminded to carry.", "Neptune, the 8th and 12th houses"],
+    ["stranger", "\u{1F464}", "Stranger / shadow figure", "stranger|strangers|unknown man|unknown woman|figure|shadow|intruder|faceless", "Often a part of yourself you haven't met yet (Jung's 'shadow'). Their behaviour hints at what you are not acknowledging.", "Pluto, the 12th house"],
+    ["celebrity", "\u2B50", "Celebrity", "celebrity|famous|singer|actor|actress|star|president|king|queen", "Qualities you admire or want recognised in yourself — talent, confidence, status.", "Sun, Leo, the 10th house"],
+    ["money", "\u{1F4B0}", "Money / treasure", "money|cash|coins|gold|treasure|rich|wallet|lottery|jewel|jewels|diamond", "Self-worth and value — what you think you deserve. Losing money = feeling undervalued; finding it = discovering an inner resource.", "Venus, Jupiter, the 2nd house"],
+    ["work", "\u{1F4BC}", "Work / boss", "work|job|office|boss|coworker|colleague|meeting|fired|promotion|interview", "Ambition, responsibility and how you feel about your role. Being fired = fear of not measuring up.", "Saturn, the 10th and 6th houses"],
+    ["phone", "\u{1F4F1}", "Phone / message", "phone|call|calling|text|message|email|letter|can't dial|signal", "Communication. Trouble dialling or a dead battery = a conversation you can't get through, or feeling unheard.", "Mercury, Gemini, the 3rd house"],
+    ["bathroom", "\u{1F6BD}", "Bathroom / toilet", "bathroom|toilet|shower|bath|washing", "Release and privacy — letting go of emotions or needing personal space. No privacy = boundaries are being crossed.", "Virgo, the 6th and 12th houses"],
+    ["blood", "\u{1FA78}", "Blood / injury", "blood|bleeding|wound|wounded|injury|injured|hurt|surgery|hospital|doctor", "Life force and something that is draining you — or healing in progress.", "Mars, the 6th house"],
+    ["hair", "\u2702\uFE0F", "Hair", "hair|haircut|bald|cutting hair", "Identity, image and strength. Cutting hair = a change in how you present yourself or letting go of the past.", "Aries, the 1st house"],
+    ["mirror", "\u{1FA9E}", "Mirror", "mirror|reflection|reflected", "Self-image and self-reflection. A distorted reflection = the gap between how you see yourself and who you are.", "Libra, Ascendant"],
+    ["door", "\u{1F6AA}", "Door / gate", "door|doors|gate|key|keys|threshold|portal", "Opportunities and transitions. An open door invites you forward; a locked one shows a block or something not ready yet.", "Uranus, Jupiter"],
+    ["stairs", "\u{1FA9C}", "Stairs / elevator", "stairs|staircase|ladder|elevator|lift|climb|climbing|escalator", "Progress and levels of awareness. Going up = growth or ambition; going down = exploring the unconscious.", "Saturn, Capricorn, the 10th house"],
+    ["bridge", "\u{1F309}", "Bridge", "bridge|crossing|cross over", "Transition between two stages of life, or reconnecting two sides of something.", "Mercury, Gemini"],
+    ["mountain", "\u26F0\uFE0F", "Mountain / cliff", "mountain|cliff|summit|peak|hill|edge", "Goals and obstacles. Reaching the top = achievement; standing at the edge = a big decision or fear of a leap.", "Saturn, Capricorn"],
+    ["forest", "\u{1F332}", "Forest / garden", "forest|woods|jungle|trees|tree|garden|flowers|flower", "The unconscious and natural growth. A dark forest is the unknown; a garden is what you are cultivating.", "Venus, Taurus, Neptune"],
+    ["darkness", "\u{1F311}", "Darkness / night", "dark|darkness|night|blackout|can't see|cannot see", "The unknown, uncertainty or what is hidden from you right now — not necessarily bad; seeds grow in the dark.", "Moon, Pluto, the 12th house"],
+    ["light", "\u2600\uFE0F", "Light / sun", "light|sun|sunlight|bright|glow|glowing|shining|rainbow", "Clarity, hope and insight — something is becoming conscious or understood.", "Sun, Leo, Jupiter"],
+    ["moon", "\u{1F319}", "Moon / stars", "moon|stars|sky|planet|planets|galaxy|space|universe", "Intuition, cycles and the bigger picture. A cosmic dream often comes during spiritual or transitional periods.", "Moon, Neptune, Pisces"],
+    ["food", "\u{1F37D}\uFE0F", "Food / eating", "food|eat|eating|ate|hungry|feast|restaurant|cooking|meal", "Nourishment — emotional, not only physical. What you hunger for in waking life.", "Moon, Taurus, Cancer"],
+    ["weapon", "\u{1F5E1}\uFE0F", "Weapons / fighting", "gun|knife|sword|shoot|shot|shooting|fight|fighting|attack|attacked|war|soldier", "Conflict and defence — anger you're holding, or feeling under attack.", "Mars, Aries, Pluto"],
+    ["police", "\u{1F6A8}", "Police / prison", "police|cop|jail|prison|arrested|guilty|court|judge", "Guilt, rules and authority — your inner critic, or fear of being caught out.", "Saturn, the 12th and 10th houses"],
+    ["travel", "\u2708\uFE0F", "Travel / journey", "travel|trip|journey|suitcase|luggage|abroad|foreign|vacation|holiday", "Life path and change. Lost luggage = worrying about what you carry from the past; a journey = a new stage.", "Jupiter, Sagittarius, the 9th house"],
+    ["ceremony", "\u{1F470}", "Ceremony", "ceremony|ritual|church|temple|mosque|prayer|pray", "Commitment, initiation or the sacred — something in your life asks for meaning or a formal step.", "Jupiter, Neptune, the 9th house"],
+    ["party", "\u{1F389}", "Party / celebration", "party|celebration|dance|dancing|concert|festival|music|singing", "Joy, belonging and self-expression — or feeling out of place among others.", "Venus, Leo, the 5th and 11th houses"],
+    ["child", "\u{1F9D2}", "Child / younger self", "child|children|kid|kids|little girl|little boy|younger self|childhood", "Your inner child — playfulness, needs from long ago, or something that was never finished.", "Moon, the 5th house"],
+    ["sex", "\u{1F525}", "Sex / intimacy", "sex|sexual|intimate|intimacy|seduce|seduction", "Merging, desire and vitality — often about integrating a quality the other person represents.", "Mars, Venus, Pluto, the 8th house"],
+    ["sick", "\u{1F912}", "Illness", "sick|ill|illness|vomit|vomiting|disease|cancer|virus", "Something feels 'off' — stress, burnout or a situation that isn't healthy for you.", "the 6th house, Virgo, Neptune"],
+    ["shoes", "\u{1F45F}", "Shoes / clothes", "shoes|shoe|clothes|dress|outfit|uniform|costume", "Roles and identity — how you present yourself, or a role you're stepping into or out of.", "Ascendant, Venus"],
+    ["voice", "\u{1F5E3}\uFE0F", "Can't speak / scream", "can't speak|couldn't speak|cannot speak|can't scream|couldn't scream|cannot scream|no voice|mute|scream|screaming|yell|yelling", "Feeling unheard or holding back what you really want to say.", "Mercury, the throat, Taurus"],
+    ["egg", "\u{1F95A}", "Egg / seed", "egg|eggs|seed|seeds|nest", "Potential — something small that could become big with care and time.", "Moon, Taurus"],
+    ["ice", "\u2744\uFE0F", "Ice / snow / cold", "ice|snow|frozen lake|cold|winter|freezing", "Emotional distance or feelings put on hold. Melting ice = things starting to thaw.", "Saturn, Capricorn"],
+    ["psychic", "\u{1F52E}", "Psychic / prophecy", "psychic|prophecy|vision|premonition|tarot|fortune|crystal ball|witch|magic", "Intuition knocking — trust your inner knowing, while remembering most dreams speak in symbols, not predictions.", "Neptune, Pisces, the 12th house"]
+  ];
+  var DREAM_FEELINGS = [["joy", "\u{1F60A}", "joyful"], ["peace", "\u{1F60C}", "peaceful"], ["love", "\u{1F970}", "loving"], ["awe", "\u{1F929}", "amazed"], ["curious", "\u{1F9D0}", "curious"], ["confused", "\u{1F635}", "confused"], ["anxious", "\u{1F630}", "anxious"], ["scared", "\u{1F631}", "scared"], ["sad", "\u{1F622}", "sad"], ["angry", "\u{1F620}", "angry"], ["ashamed", "\u{1F633}", "embarrassed"], ["powerful", "\u{1F4AA}", "powerful"], ["lost", "\u{1F32B}\uFE0F", "lost"], ["nostalgic", "\u{1F570}\uFE0F", "nostalgic"]];
+  var feelingById = (id) => { const f = DREAM_FEELINGS.find((x) => x[0] === id); return f ? { id, icon: f[1], name: f[2] } : null; };
+  var DREAM_RE = DREAM_SYMBOLS.map(([id, , , kw]) => [id, new RegExp(`(?:^|[^a-z])(?:${kw.split("|").map((w) => w.replace(/[.*+?^${}()[\]\\]/g, "\\$&").replace(/'/g, "['’]")).join("|")})(?:s|es|ed|ing)?(?![a-z])`, "i")]);
+  var symbolById = (id) => { const s2 = DREAM_SYMBOLS.find((x) => x[0] === id); return s2 ? { id, icon: s2[1], name: s2[2], meaning: s2[4], astro: s2[5] } : null; };
+  function detectSymbols(text) {
+    const t = " " + String(text || "").toLowerCase() + " ";
+    return DREAM_RE.filter(([, re]) => re.test(t)).map(([id]) => id);
+  }
+  var MOON_DREAM = { Aries: "fast, action-packed dreams — chases, competitions, conflict", Taurus: "sensual, comfortable dreams — food, nature, money, beauty", Gemini: "busy, talkative dreams — messages, many scenes, siblings", Cancer: "emotional dreams of home, family, childhood and the past", Leo: "dramatic, vivid dreams — being on stage, praised or ignored", Virgo: "detailed dreams of tasks, lists, health and things going wrong", Libra: "dreams about relationships, fairness and choosing between people", Scorpio: "intense dreams — secrets, sex, death, power and rebirth", Sagittarius: "big adventure dreams — travel, teachers, open landscapes", Capricorn: "dreams about work, duty, status, exams and climbing", Aquarius: "strange, futuristic or group dreams — friends, tech, the unusual", Pisces: "vivid, symbolic, oceanic dreams — the most psychic Moon sign" };
+  function dreamProfile(p) {
+    // Which placements make someone a vivid / intuitive dreamer. A simple, transparent score.
+    const c = chartFor(p), pts = Object.fromEntries(c.points.map((x) => [x.key, x])), known = !c.timeUnknown;
+    const personal = ["Sun", "Moon", "Mercury", "Venus", "Mars", "Ascendant"];
+    const nepAsp = c.aspects.filter((a) => (a.a === "Neptune" || a.b === "Neptune") && personal.includes(a.a === "Neptune" ? a.b : a.a) && a.orb <= 6);
+    const twelfth = known ? c.points.filter((x) => x.house === 12 && !["Ascendant", "Midheaven", "Fortune", "South Node"].includes(x.key)) : [];
+    const pisces = c.points.filter((x) => x.sign === "Pisces" && !["Midheaven", "Fortune", "South Node"].includes(x.key));
+    const el = c.balance.elements, tot = Object.values(el).reduce((a, b) => a + b, 0) || 1, water = el.Water / tot;
+    const moon = pts.Moon, nep = pts.Neptune;
+    const factors = [];
+    let score = 20;
+    if (["Cancer", "Scorpio", "Pisces"].includes(moon.sign)) { score += 15; factors.push(`Moon in ${moon.sign} — a water Moon dreams deeply and remembers feelings`); }
+    if (nepAsp.length) { score += Math.min(24, nepAsp.length * 8); factors.push(`Neptune touches ${nepAsp.map((a) => (a.a === "Neptune" ? a.b : a.a)).join(", ")} — imagination and intuition are wired into the personality`); }
+    if (twelfth.length) { score += Math.min(18, twelfth.length * 6); factors.push(`${twelfth.map((x) => x.key).join(", ")} in the 12th house — the house of sleep, dreams and the unconscious`); }
+    if (pisces.length) { score += Math.min(12, pisces.length * 4); factors.push(`${pisces.map((x) => x.key).join(", ")} in Pisces — the sign of dreams`); }
+    if (water > 0.3) { score += 10; factors.push(`Strong water element (${Math.round(water * 100)}%) — feelings speak through images`); }
+    if (known && moon.house) { const h = moon.house; if ([4, 8, 12].includes(h)) { score += 6; factors.push(`Moon in the ${h}th house — a private, inward emotional life`); } }
+    score = Math.max(5, Math.min(98, score));
+    return { score, moon, nep, nepAsp, twelfth, pisces, water, factors, known, style: MOON_DREAM[moon.sign] };
+  }
+  function dreamSky(p, wakeDate) {
+    // The sky in the small hours of the night before you woke up.
+    const night = new Date(wakeDate + "T03:00:00"), m = moonToday(night), c = chartFor(p);
+    const moonHouse = !c.timeUnknown && c.houses ? houseOf(m.lon, c.houses) : null;
+    const natMoon = c.points.find((x) => x.key === "Moon");
+    const lunarReturn = Math.abs(angDiff(m.lon, natMoon.lon)) < 13;
+    const tr = transitsFor(p, night).slice(0, 4).map((x) => `${x.tb} ${x.type} natal ${x.tk}`);
+    const nep = transitsFor(p, night).filter((x) => x.tb === "Neptune" || x.tb === "Pluto").slice(0, 2).map((x) => `${x.tb} ${x.type} natal ${x.tk}`);
+    return { moonSign: m.sign, moonPhase: m.phase, elong: m.elong, illum: m.illum, moonHouse, lunarReturn, transits: [...new Set([...tr, ...nep])].slice(0, 5), pday: numerology(p, numSys(), night).personalDay };
+  }
+  var dreamSkyOf = (d) => d.sky || (d.sky = dreamSky(person(d.personId) || S.profiles[0], d.date));
+  function dreamSkyLine(s2) {
+    return `☽ Moon in ${s2.moonSign}${s2.moonHouse ? ` (your ${ordinal(s2.moonHouse)} house)` : ""} · ${s2.moonPhase.toLowerCase()}${s2.lunarReturn ? " · near your lunar return" : ""}${s2.transits.length ? " · " + s2.transits.slice(0, 2).join(", ") : ""}`;
+  }
+  var ordinal = (n) => n + (["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || "th");
+  function dreamStats(p) {
+    const ds = S.dreams.filter((d) => d.personId === p.id);
+    const sym = {}, feel = {}, phase = {}, sign = {};
+    for (const d of ds) {
+      for (const s2 of d.symbols || []) sym[s2] = (sym[s2] || 0) + 1;
+      for (const f of d.feelings || []) feel[f] = (feel[f] || 0) + 1;
+      const sk = dreamSkyOf(d);
+      phase[sk.moonPhase] = (phase[sk.moonPhase] || 0) + 1;
+      sign[sk.moonSign] = (sign[sk.moonSign] || 0) + 1;
+    }
+    const top = (o) => Object.entries(o).sort((a, b) => b[1] - a[1]);
+    return { ds, n: ds.length, lucid: ds.filter((d) => d.lucid).length, nightmares: ds.filter((d) => d.nightmare).length, recurring: ds.filter((d) => d.recurring).length, symbols: top(sym), feelings: top(feel), phase, sign };
+  }
+  function countBarsSVG(items, { color = "var(--accent2, #8f7cff)" } = {}) {
+    // items: [{label, title, n}]
+    const max = Math.max(1, ...items.map((x) => x.n)), W = 30 * items.length + 10, H = 130, base = H - 26;
+    return `<svg viewBox="0 0 ${W} ${H}" class="moodbars" role="img">${items.map((it, i) => { const x = 8 + i * 30, h = it.n / max * (base - 14); return `${it.n ? `<rect x="${x + 3}" y="${(base - h).toFixed(1)}" width="18" height="${h.toFixed(1)}" rx="5" fill="${color}" opacity="${(0.45 + 0.55 * it.n / max).toFixed(2)}"><title>${esc2(it.title)}: ${it.n} dream${it.n === 1 ? "" : "s"}</title></rect><text x="${x + 12}" y="${(base - h - 4).toFixed(1)}" class="mb-l">${it.n}</text>` : `<rect x="${x + 3}" y="${base - 3}" width="18" height="3" rx="1.5" class="mb-empty"/>`}<text x="${x + 12}" y="${base + 14}" class="mb-l">${it.label}</text>`; }).join("")}</svg>`;
+  }
+  function dreamFormHTML(p, editing) {
+    const d = editing || {}, now = new Date(), feel = new Set(d.feelings || []);
+    const syms = detectSymbols((d.title || "") + " " + (d.text || ""));
+    return `<form class="card dform" id="dream-form" data-edit="${d.id || ""}">
+      <div class="jq">${editing ? "Edit dream" : `What did ${esc2(p.name.split(" ")[0])} dream?`}</div>
+      <input name="title" class="dtitle" maxlength="80" placeholder="Give it a short title (e.g. “Lost in my old school”)" value="${esc2(d.title || "")}">
+      <textarea name="text" rows="6" placeholder="Describe the dream while it's fresh — places, people, colors, what happened, how it ended. Even fragments help.">${esc2(d.text || "")}</textarea>
+      <div class="dsyms-live" id="dr-detected">${dreamSymChips(syms, "Symbols spotted:")}</div>
+      <div class="jq small">How did it feel?</div>
+      <div class="agrp-items dfeel">${DREAM_FEELINGS.map(([id, icon, name]) => `<button type="button" class="act ${feel.has(id) ? "on" : ""}" data-action="toggle-feel" data-feel="${id}"><span>${icon}</span><i>${name}</i></button>`).join("")}</div>
+      <div class="dflags">
+        <label class="dflag"><input type="checkbox" name="lucid" ${d.lucid ? "checked" : ""}> ✨ Lucid <em>I knew I was dreaming</em></label>
+        <label class="dflag"><input type="checkbox" name="nightmare" ${d.nightmare ? "checked" : ""}> \u{1F631} Nightmare</label>
+        <label class="dflag"><input type="checkbox" name="recurring" ${d.recurring ? "checked" : ""}> \u{1F501} Recurring</label>
+        <label class="dflag dclar">Clarity <select name="clarity">${[["1", "faint"], ["2", "hazy"], ["3", "clear"], ["4", "vivid"], ["5", "ultra-vivid"]].map(([v, l]) => `<option value="${v}" ${String(d.clarity || 3) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      </div>
+      <details class="dlife" ${d.life ? "open" : ""}><summary>What's going on in life right now? <span class="muted small">(optional — makes the interpretation far more personal)</span></summary>
+        <textarea name="life" rows="2" placeholder="e.g. starting a new job, a fight with my sister, moving house…">${esc2(d.life || "")}</textarea></details>
+      <div class="jrow"><div class="jrow-l"><label class="muted small">Woke up on <input type="date" name="date" value="${d.date || dkey(now)}" max="${dkey(now)}"></label></div>
+        <div class="jrow-r">${editing || S.dreams.some((x) => x.personId === p.id) ? '<button type="button" class="btn ghost" data-action="dream-cancel">Cancel</button>' : ""}
+          ${!editing && S.settings.apiKey ? '<label class="muted small dauto"><input type="checkbox" name="interpret" checked> Interpret with AI</label>' : ""}
+          <button class="btn primary">${editing ? "Save changes" : "Save dream"}</button></div></div>
+    </form>`;
+  }
+  function dreamSymChips(ids, label = "") {
+    if (!ids.length) return label ? `<span class="muted small">Symbols are spotted automatically as you write.</span>` : "";
+    return `${label ? `<span class="muted small">${label}</span> ` : ""}${ids.map(symbolById).filter(Boolean).map((s2) => `<span class="dsym" title="${esc2(s2.meaning)}">${s2.icon} ${esc2(s2.name)}</span>`).join("")}`;
+  }
+  var dreamRun = null; // { id, ctrl, text, status }
+  function dreamReadingHTML(d) {
+    if (dreamRun?.id === d.id) return `<div class="dr-reading live md">${dreamRun.text ? renderMarkdown(dreamRun.text) + '<span class="caret"></span>' : `<p class="typing"><span></span><span></span><span></span> <em>${esc2(dreamRun.status || "Reading the dream and the sky that night…")}</em></p>`}<div class="msg-actions"><button class="link small" data-action="dream-stop">■ Stop</button></div></div>`;
+    if (d.reading?.text) return `<details class="dr-reading-wrap" ${S.ui.dopen === d.id ? "open" : ""} data-dream="${d.id}"><summary>✦ Interpretation <span class="muted small">· ${fmtDate(new Date(d.reading.at))}</span></summary><div class="dr-reading md">${renderMarkdown(d.reading.text)}${d.reading.notice ? `<p class="notice">${esc2(d.reading.notice)}</p>` : ""}<div class="msg-actions">${ttsOK ? `<button class="link small" data-action="dream-listen" data-id="${d.id}">\u{1F50A} Listen</button>` : ""}<button class="link small" data-action="dream-chat" data-id="${d.id}">\u{1F4AC} Keep talking about it</button><button class="link small" data-action="dream-interpret" data-id="${d.id}">↻ Interpret again</button></div></div></details>`;
+    if (d.reading?.error) return `<p class="err small">${esc2(d.reading.error)} <button class="link small" data-action="dream-interpret" data-id="${d.id}">Try again</button></p>`;
+    return `<button class="btn small" data-action="dream-interpret" data-id="${d.id}" ${dreamRun ? "disabled" : ""}>✦ Interpret this dream</button>`;
+  }
+  function dreamCardHTML(d) {
+    const sk = dreamSkyOf(d), dt = new Date(d.date + "T12:00:00");
+    const syms = (d.symbols || []).map(symbolById).filter(Boolean);
+    const badges = [d.lucid && '<span class="dbadge lucid">✨ lucid</span>', d.nightmare && '<span class="dbadge night">\u{1F631} nightmare</span>', d.recurring && '<span class="dbadge rec">\u{1F501} recurring</span>'].filter(Boolean).join("");
+    return `<article class="card dream" id="dr-${d.id}">
+      <div class="dr-side">${moonIconSVG(sk.elong, 44)}<span class="muted small">${sk.illum}%</span></div>
+      <div class="dr-main">
+        <div class="dr-top"><h3 class="dr-title">${esc2(d.title || "Untitled dream")}</h3><span class="muted small">${dt.toLocaleDateString(void 0, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}</span>${badges}
+          <span class="je-tools"><button class="link small" data-action="dream-edit" data-id="${d.id}">edit</button><button class="del" data-action="dream-del" data-id="${d.id}" title="Delete dream">\xD7</button></span></div>
+        ${d.text ? `<p class="dr-text">${esc2(d.text).replace(/\n/g, "<br>")}</p>` : ""}
+        ${(d.feelings || []).length ? `<div class="je-acts dr-feel">${d.feelings.map(feelingById).filter(Boolean).map((f) => `<span>${f.icon} ${f.name}</span>`).join("")}</div>` : ""}
+        ${d.life ? `<p class="muted small dr-life">Life right now: ${esc2(d.life)}</p>` : ""}
+        <div class="jsky">${esc2(dreamSkyLine(sk))}</div>
+        ${syms.length ? `<details class="dr-syms"><summary>${syms.map((s2) => `<span class="dsym">${s2.icon} ${esc2(s2.name)}</span>`).join("")}<span class="muted small"> what these usually mean</span></summary><div class="dsym-list">${syms.map((s2) => `<div><b>${s2.icon} ${esc2(s2.name)}</b><p>${esc2(s2.meaning)}</p><span class="muted small">In astrology: ${esc2(s2.astro)}</span></div>`).join("")}</div></details>` : ""}
+        <div class="dr-ai">${dreamReadingHTML(d)}</div>
+      </div>
+    </article>`;
+  }
+  function dreamsView() {
+    const p = person(S.ui.selectedId) || S.profiles[0];
+    if (!p) return emptyState();
+    S.ui.selectedId = p.id;
+    const first = esc2(p.name.split(" ")[0]);
+    const st = dreamStats(p), tab = S.ui.dtab || "dreams", prof = dreamProfile(p);
+    const editing = S.ui.dedit ? S.dreams.find((d) => d.id === S.ui.dedit) : null;
+    const showForm = editing || S.ui.dform || !st.n;
+    const head = `
+    <header class="vhead"><div><h1>${first}'s dreams</h1><p class="muted">Write dreams down, see the symbols and the sky that night, and ask Claude what they might mean</p></div>
+      <div class="actions">${st.n >= 3 ? `<button class="btn" data-action="ask-dreams" data-id="${p.id}">✦ Find dream patterns with AI</button>` : ""}${!showForm ? '<button class="btn primary" data-action="dream-new">＋ Record a dream</button>' : ""}</div></header>
+    ${guideBox("dreams", "How dream interpretation works", `<p>Write the dream down as soon as you wake — even fragments. Astrolabe spots common <b>symbols</b> (water, falling, teeth, a house…) and explains what they usually stand for, records the <b>sky that night</b> (the Moon's sign, phase and which of your houses it was in, plus your strongest transits), and can ask <b>Claude</b> to interpret the dream using your birth chart, your feelings and what's going on in your life.</p><p>Dreams are treated as messages from your own mind, not predictions. The more you log, the more Claude can spot recurring themes.</p>`)}
+    <div class="jstrip">
+      <div class="jst"><b>${st.n}</b><span>dreams</span></div>
+      <div class="jst"><b>${st.lucid}</b><span>lucid ✨</span></div>
+      <div class="jst"><b>${st.nightmares}</b><span>nightmares</span></div>
+      <div class="jst"><b>${st.symbols[0] ? symbolById(st.symbols[0][0]).icon + " " + st.symbols[0][1] + "\xD7" : "—"}</b><span>${st.symbols[0] ? esc2(symbolById(st.symbols[0][0]).name.toLowerCase()) : "top symbol"}</span></div>
+      <div class="jst"><b>${prof.score}</b><span>dream sensitivity ${tipHTML("A rough score from the birth chart: a water Moon, Neptune touching personal planets, planets in the 12th house or Pisces, and lots of water all point to vivid, intuitive dreaming. See the Your dream chart tab.")}</span></div>
+    </div>
+    ${showForm ? dreamFormHTML(p, editing) : ""}
+    <div class="seg jtabs">${[["dreams", "Dreams"], ["chart", "Your dream chart"], ["symbols", "Symbols"], ["sky", "Dreams & the Moon"]].map(([k, l]) => `<button class="${tab === k ? "on" : ""}" data-action="dtab" data-tab="${k}">${l}</button>`).join("")}</div>`;
+    let body = "";
+    if (tab === "dreams") {
+      const list = [...st.ds].sort((a, b) => (b.date + b.created).localeCompare(a.date + a.created));
+      body = list.length ? list.map(dreamCardHTML).join("") : '<div class="card"><p class="muted">No dreams yet — write your first one above.</p></div>';
+    } else if (tab === "chart") {
+      const meter = `<div class="dmeter"><div class="dmeter-fill" style="width:${prof.score}%"></div></div>`;
+      body = `<div class="two-col" style="margin-top:0">
+        <div class="card"><h3>How ${first} dreams</h3>
+          <p class="ndesc">With the Moon in <b>${prof.moon.sign}</b>, expect ${prof.style}.</p>
+          <p class="muted small" style="margin-bottom:6px">Dream sensitivity: <b>${prof.score}/100</b></p>${meter}
+          <ul class="dfactors">${prof.factors.map((f) => `<li>${esc2(f)}</li>`).join("") || "<li>No strong dream signatures — dreams may be more practical and easier to forget. Writing them down right away helps a lot.</li>"}</ul>
+          ${prof.known ? "" : '<p class="muted small">Birth time unknown, so houses (like the 12th) are not used.</p>'}</div>
+        <div class="card"><h3>Dream keys in the chart ${tipHTML("The placements astrologers look at for dreams: the Moon (feelings and the night), Neptune (imagination, the unconscious), the 12th house (sleep and the hidden) and Pisces (the dreaming sign).")}</h3>
+          <div class="dkeys">
+            <div><b>☽ Moon</b><span>${prof.moon.text}${prof.moon.house ? `, house ${prof.moon.house}` : ""}</span><em>Emotional tone of your dreams</em></div>
+            <div><b>♆ Neptune</b><span>${prof.nep.text}${prof.nep.house ? `, house ${prof.nep.house}` : ""}</span><em>${prof.nepAsp.length ? "Aspects " + prof.nepAsp.map((a) => `${a.a === "Neptune" ? a.b : a.a} (${a.type})`).join(", ") : "No tight aspects to personal planets"}</em></div>
+            <div><b>12th house</b><span>${prof.known ? prof.twelfth.map((x) => x.key).join(", ") || "empty" : "unknown"}</span><em>What lives in your unconscious</em></div>
+            <div><b>♓ Pisces</b><span>${prof.pisces.map((x) => x.key).join(", ") || "none"}</span><em>Where you dream with your eyes open</em></div>
+          </div></div>
+      </div>
+      <div class="card" style="margin-top:18px"><h3>Good nights for dreaming</h3><p class="ndesc">Dreams tend to be more vivid when the Moon passes through water signs (Cancer, Scorpio, Pisces), around the Full Moon, and when the Moon crosses ${prof.known ? `your 12th house (${SIGNS[Math.floor(chartFor(p).houses[11] / 30)]})` : "your natal Moon sign"}. Tonight the Moon is in <b>${moonToday().sign}</b> (${moonToday().phase.toLowerCase()}).</p></div>`;
+    } else if (tab === "symbols") {
+      const mine = st.symbols.slice(0, 12), max = mine[0]?.[1] || 1;
+      body = `${mine.length ? `<div class="card"><h3>${first}'s recurring symbols</h3><div class="imps">${mine.map(([id, n]) => { const s2 = symbolById(id); return `<div class="imp"><span class="imp-a">${s2.icon} ${esc2(s2.name)}</span><div class="imp-bar"><div class="imp-fill up" style="width:${n / max * 100}%;left:0"></div></div><b>${n}\xD7</b><span></span></div>`; }).join("")}</div>${st.feelings.length ? `<p class="muted small">Most common feelings: ${st.feelings.slice(0, 4).map(([f, n]) => `${feelingById(f)?.icon} ${feelingById(f)?.name} (${n})`).join(" · ")}</p>` : ""}</div>` : ""}
+      <div class="card" style="margin-top:18px"><div class="dsearch-row"><h3>Dream symbol dictionary</h3><input type="search" id="dsearch" placeholder="Search symbols… (e.g. snake, teeth)" aria-label="Search dream symbols"></div>
+        <p class="muted small">Common meanings from dream psychology, with the planet or house astrologers connect each one to. Your own associations always matter more — a dog means something different to a dog lover.</p>
+        <div class="dsym-list dict">${DREAM_SYMBOLS.map(([id, icon, name, kw, meaning, astro]) => `<div data-dsym="${esc2((name + " " + kw).toLowerCase())}"><b>${icon} ${esc2(name)}</b><p>${esc2(meaning)}</p><span class="muted small">In astrology: ${esc2(astro)}</span></div>`).join("")}</div></div>`;
+    } else {
+      const PH = { "New Moon": "\u{1F311}", "Waxing Crescent": "\u{1F312}", "First Quarter": "\u{1F313}", "Waxing Gibbous": "\u{1F314}", "Full Moon": "\u{1F315}", "Waning Gibbous": "\u{1F316}", "Last Quarter": "\u{1F317}", "Waning Crescent": "\u{1F318}" };
+      const ABBR = ["Ari", "Tau", "Gem", "Can", "Leo", "Vir", "Lib", "Sco", "Sag", "Cap", "Aqu", "Pis"];
+      const bestPh = Object.entries(st.phase).sort((a, b) => b[1] - a[1])[0], bestSg = Object.entries(st.sign).sort((a, b) => b[1] - a[1])[0];
+      body = st.n < 3 ? '<div class="card"><p class="muted">Log 3 or more dreams to see how they line up with the Moon.</p></div>' : `
+      <div class="sky-stats">
+        <div class="card"><h3>Dreams by Moon phase</h3>${countBarsSVG(Object.keys(PH).map((k) => ({ label: PH[k], title: k, n: st.phase[k] || 0 })))}<p class="ndesc small">Most dreams remembered around the <b>${esc2(bestPh[0])}</b>.</p></div>
+        <div class="card"><h3>Dreams by Moon sign</h3>${countBarsSVG(SIGNS.map((s2, i) => ({ label: ABBR[i], title: `Moon in ${s2}`, n: st.sign[s2] || 0 })))}<p class="ndesc small">Most often with the Moon in <b>${esc2(bestSg[0])}</b>.</p></div>
+        <div class="card"><h3>Kinds of dreams</h3><div class="el-wrap">${donutSVG([{ label: "lucid", value: st.lucid, color: "#8f7cff" }, { label: "nightmare", value: st.nightmares, color: "#ef5a6f" }, { label: "other", value: Math.max(0, st.n - st.lucid - st.nightmares), color: "#5aa9e6" }].filter((x) => x.value), st.nightmares > st.lucid ? "nightmare" : st.lucid ? "lucid" : "ordinary")}</div><p class="muted small">${st.recurring} recurring</p></div>
+      </div>
+      <p class="muted small">Remembering more dreams at certain phases can be a real pattern — or simply when you had time to write them down. Keep logging and it gets clearer.</p>`;
+    }
+    return `<section class="view journal-view dreams-view">${head}<div class="jtab-body">${body}</div></section>`;
+  }
+  function dreamPrompt(d, p) {
+    const sk = dreamSkyOf(d), first = p.name.split(" ")[0];
+    const syms = (d.symbols || []).map(symbolById).filter(Boolean);
+    return `Please interpret ${first}'s dream.
+
+Dream (woke up ${d.date})${d.title ? ` — "${d.title}"` : ""}:
+${d.text || "(no description)"}
+
+Feelings in the dream: ${(d.feelings || []).map((f) => feelingById(f)?.name).filter(Boolean).join(", ") || "not given"}
+Type: ${[d.lucid && "lucid", d.nightmare && "nightmare", d.recurring && "recurring"].filter(Boolean).join(", ") || "ordinary"}; clarity ${d.clarity || 3}/5
+What's going on in life right now: ${d.life || "not given"}
+Symbols the app detected: ${syms.map((s2) => s2.name).join(", ") || "none"}
+Sky that night (around 3 a.m.): Moon in ${sk.moonSign}${sk.moonHouse ? ` transiting ${first}'s natal house ${sk.moonHouse}` : ""}, ${sk.moonPhase} (${sk.illum}% lit)${sk.lunarReturn ? ", close to the natal Moon (lunar return)" : ""}; transits: ${sk.transits.join("; ") || "none tight"}; numerology personal day ${sk.pday}.
+
+Structure the answer with these Markdown headings:
+## In a nutshell — 2–3 sentences: the most likely core message.
+## The symbols — the key images and what they most likely mean *for ${first}*, using the details of the dream, the feelings and the life context (not generic dictionary meanings).
+## What the sky adds — how the Moon that night and the current transits connect to the dream, tied to specific placements in ${first}'s birth chart (Moon, Neptune, 12th house, any planets the transits touch). Mention Human Design or numerology only if it genuinely adds something.
+## What it might be asking of you — practical, gentle takeaways.
+## Questions to sit with — 2–3 reflective questions.
+If earlier dreams in the journal share themes or symbols, point that out. Offer more than one possible reading where it's ambiguous. Dreams are reflections, not predictions — never present one as a literal omen. If the dream touches on trauma, self-harm or something frightening, be calm and supportive and suggest talking to someone they trust when appropriate.`;
+  }
+  var DREAM_SYSTEM = `
+
+# Dream interpretation
+You are also a thoughtful dream interpreter, blending depth psychology (Jung: symbols, the shadow, archetypes, compensation; and modern views of dreams as emotional processing) with astrology. Read every dream personally — the dreamer's own feelings and life context outweigh dictionary meanings. Be warm, specific and grounded; don't overclaim. Keep it to about 350–500 words unless asked for more.`;
+  async function interpretDream(id) {
+    const d = S.dreams.find((x) => x.id === id), p = d && person(d.personId);
+    if (!d || !p) return;
+    if (!S.settings.apiKey) { openSettings(); toast("Add your Anthropic API key first."); return; }
+    if (dreamRun) { toast("Another dream is being interpreted — one moment."); return; }
+    dreamRun = { id, ctrl: new AbortController(), text: "", status: "" };
+    const paintNow = () => { const box = document.querySelector(`#dr-${id} .dr-ai`); if (box) box.innerHTML = dreamReadingHTML(d); };
+    paintNow();
+    document.getElementById("dr-" + id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    let raf = 0;
+    const prompt = dreamPrompt(d, p);
+    try {
+      const res = await streamReply({
+        apiKey: S.settings.apiKey, model: S.settings.model, effort: S.settings.effort,
+        system: buildSystem([p], S.settings) + DREAM_SYSTEM,
+        messages: [{ role: "user", content: prompt }],
+        signal: dreamRun.ctrl.signal,
+        onText: (t) => { dreamRun.text += t; if (!raf) raf = requestAnimationFrame(() => { raf = 0; paintNow(); }); },
+        onStatus: (s2) => { if (s2 && !dreamRun.text) { dreamRun.status = "Reading the dream and the sky that night…"; paintNow(); } }
+      });
+      d.reading = { text: res.text, prompt, model: res.model, at: Date.now(), notice: res.notice || (res.stop === "max_tokens" ? "The answer hit the length limit." : null) };
+      if (res.stop === "refusal") d.reading = { error: "Claude declined to interpret this one." };
+      S.ui.dopen = id;
+    } catch (err) {
+      const msg = describeError(err);
+      d.reading = dreamRun.text ? { text: dreamRun.text, prompt, at: Date.now(), notice: msg } : { error: msg };
+    } finally {
+      dreamRun = null;
+      await save();
+      if (S.ui.view === "dreams") render();
+      if (d.reading?.text && TTS.autoRead && ttsOK) { const el = document.querySelector(`#dr-${id} .dr-reading`); if (el) readStart(readableBlocks(el), `Dream: ${d.title || "interpretation"}`, "msg"); }
+    }
+  }
+  function dreamContext(p) {
+    const ds = S.dreams.filter((d) => d.personId === p.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15);
+    if (!ds.length) return "";
+    const st = dreamStats(p);
+    return `\nDream journal (newest first; feelings; flags; sky that night):\n${ds.map((d) => { const sk = dreamSkyOf(d); return `  ${d.date}${d.title ? ` "${d.title}"` : ""}: ${(d.text || "").slice(0, 300).replace(/\n/g, " ")}${(d.feelings || []).length ? ` [felt ${d.feelings.map((f) => feelingById(f)?.name || f).join(", ")}]` : ""}${d.lucid ? " (lucid)" : ""}${d.nightmare ? " (nightmare)" : ""}${d.recurring ? " (recurring)" : ""} {Moon in ${sk.moonSign}${sk.moonHouse ? " natal H" + sk.moonHouse : ""}, ${sk.moonPhase}}`; }).join("\n")}\nDream stats: ${st.n} dreams, ${st.lucid} lucid, ${st.nightmares} nightmares, ${st.recurring} recurring. Recurring symbols: ${st.symbols.slice(0, 8).map(([id, n]) => `${symbolById(id)?.name} ${n}x`).join(", ") || "none yet"}.`;
+  }
   // ---------- Extras: Chinese zodiac, Gene Keys, unknown-time ranges ----------
   function chineseCardHTML(p) {
     const cz = chineseZodiac(p);
@@ -31074,7 +31381,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     const keep = { ...S.ui };
     let body = "", title = "";
     try {
-      S.ui.guides = Object.fromEntries(["chart", "compat", "num", "hd", "today", "group", "timeline", "journal"].map((k) => [k, false]));
+      S.ui.guides = Object.fromEntries(["chart", "compat", "num", "hd", "today", "group", "timeline", "journal", "dreams"].map((k) => [k, false]));
       if (kind === "person") {
         const p = person(ids[0]);
         S.ui.selectedId = p.id;
@@ -31132,7 +31439,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     return out;
   }
   var READ_SKIP = "svg, button, select, input, textarea, .actions, details.tech, table, .tip, .seg, .guide-hint, .legend, .el-legend, .px-legend, .moodpick, .jacts, .chips, .pchip, .typing, .msg-actions, .caption, .je-tools, .cal-grid, .pixels, .gscale, .ts-bar, .type-strip, .hd-legend, .num-legend, .calc, .hd-acts, .rise-strip";
-  var READ_BLOCKS = "h1, h2, h3, h4, h5, p, li, .b3k, .b3s, .b3d, .moon-title, .ntitle, .nkeys, .hd-type-name, .hd-stat, .pc-name, .pc-sign, .tr-head, .tr-when, .ev > div, .jst, .imp, .area-head, .gk-n, .gk-spec, .role b, .ts-item, .hd-ch b, .cz-card .moon-title, .sv-counts, .jday-h, .je-top .je-mood";
+  var READ_BLOCKS = "h1, h2, h3, h4, h5, p, li, .dkeys > div, .b3k, .b3s, .b3d, .moon-title, .ntitle, .nkeys, .hd-type-name, .hd-stat, .pc-name, .pc-sign, .tr-head, .tr-when, .ev > div, .jst, .imp, .area-head, .gk-n, .gk-spec, .role b, .ts-item, .hd-ch b, .cz-card .moon-title, .sv-counts, .jday-h, .je-top .je-mood";
   function readableBlocks(root) {
     const all = [...root.querySelectorAll(READ_BLOCKS)].filter((el) => !el.closest(READ_SKIP) && el.offsetParent !== null && !el.closest("details:not([open]) > :not(summary)"));
     const picked = all.filter((el) => !all.some((o) => o !== el && o.contains(el)));
@@ -31280,6 +31587,156 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     if (bub) readStart(readableBlocks(bub), "Claude's answer", "msg");
   }
   if (ttsOK) speechSynthesis.onvoiceschanged = () => { if (reader.state !== "idle") renderPlayer(); };
+  // ---------- Voice typing (Web Speech API speech recognition) ----------
+  // A 🎤 button is added to every text box. Speech is written into the box live and it keeps listening
+  // (Chrome ends a session after silence, so it is restarted) until you tap the mic again or press Esc.
+  var SR = typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
+  var mic = null; // { rec, ta, btn, base, restarts: [], err }
+  var micLang = () => TTS.micLang || navigator.language || "en-US";
+  var MIC_ERR = {
+    "not-allowed": "Chrome blocked the microphone for Astrolabe. Click the mic/lock icon in the address bar → Allow, or check System Settings → Privacy & Security → Microphone → Google Chrome.",
+    "service-not-allowed": "Chrome's speech service isn't allowed here. Check that Chrome has microphone access in System Settings → Privacy & Security → Microphone.",
+    "audio-capture": "No microphone was found, or another app is using it.",
+    "network": "Voice typing needs an internet connection (Chrome sends the audio to Google's speech service).",
+    "language-not-supported": "Voice typing doesn't support this language. Pick another in Settings → Voice & reading → Voice typing.",
+    "bad-grammar": "Chrome's speech service rejected the request."
+  };
+  function micStop(abort = false) {
+    if (!mic) return;
+    const m = mic;
+    mic = null;
+    try { abort ? m.rec.abort() : m.rec.stop(); } catch {}
+    m.btn?.classList.remove("on");
+    if (m.btn) { m.btn.title = "Speak instead of typing"; m.btn.setAttribute("aria-pressed", "false"); }
+  }
+  var capFirst = (s) => s.replace(/^\s*\S/, (c) => c.toUpperCase());
+  function micText(base, said) {
+    // Spoken punctuation words → symbols; capitalize the start of sentences.
+    let t = said.replace(/\s*\b(new line|next line)\b\s*/gi, "\n").replace(/\s*\bnew paragraph\b\s*/gi, "\n\n")
+      .replace(/\s*\b(full stop|period)\b/gi, ".").replace(/\s*\bcomma\b/gi, ",").replace(/\s*\bquestion mark\b/gi, "?").replace(/\s*\bexclamation (mark|point)\b/gi, "!")
+      .replace(/([.!?\n]\s*)([a-z])/g, (_, a, b) => a + b.toUpperCase());
+    if (!t) return base;
+    const startOfSentence = !base.trim() || /[.!?\n]\s*$/.test(base);
+    if (startOfSentence) t = capFirst(t);
+    const sep = base && !/\s$/.test(base) && !/^[.,!?\n]/.test(t) ? " " : "";
+    return base + sep + t;
+  }
+  function micSession(m) {
+    // One recognition session. When Chrome ends it on its own, start a new one that continues from the current text.
+    const rec = new SR();
+    rec.lang = micLang();
+    rec.continuous = true;
+    rec.interimResults = true;
+    if (m.local) { if ("processLocally" in rec) rec.processLocally = true; else if ("mode" in rec) rec.mode = "ondevice-only"; }
+    m.rec = rec;
+    m.base = m.ta.value;
+    m.err = null;
+    rec.onresult = (ev) => {
+      if (mic !== m || m.rec !== rec) return;
+      // Rebuild from the whole result list each time (Chrome keeps every result of the session in it).
+      const parts = [];
+      for (let i = 0; i < ev.results.length; i++) parts.push(ev.results[i][0].transcript.trim());
+      let said = parts.filter(Boolean).join(" ");
+      if (/^en/i.test(rec.lang)) said = said.replace(/\bi\b/g, "I").replace(/\bi'(m|ve|ll|d)\b/g, "I'$1");
+      m.ta.value = micText(m.base, said);
+      m.ta.scrollTop = m.ta.scrollHeight;
+      m.ta.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    rec.onerror = (ev) => { if (m.rec === rec) m.err = ev.error; };
+    rec.onend = () => {
+      if (mic !== m || m.rec !== rec) return;
+      const fatal = MIC_ERR[m.err];
+      const now = Date.now();
+      m.restarts = m.restarts.filter((t) => now - t < 4000);
+      if (!fatal && m.restarts.length < 4) {
+        m.restarts.push(now);
+        try { micSession(m); return; } catch (e) { m.err = e.message; }
+      }
+      micStop();
+      if (m.err === "network") { micHelp(m.ta, "network"); return; }
+      toast(fatal ? MIC_ERR[m.err] : `Voice typing stopped${m.err ? ` (${m.err})` : ""}. Tap 🎤 to try again.`);
+    };
+    rec.start();
+  }
+  var isBrave = typeof navigator !== "undefined" && !!navigator.brave;
+  var micLocal = {}; // lang -> true when on-device recognition is ready
+  async function micLocalReady(lang) {
+    // Chrome 139+ can recognize speech on the device (private, offline). Older builds used different names.
+    if (micLocal[lang] != null) return micLocal[lang];
+    let ok = false;
+    try {
+      if (typeof SR.available === "function") {
+        let st = await SR.available({ langs: [lang], processLocally: true });
+        if (st === "downloadable" || st === "downloading") { toast(`Downloading the on-device speech pack for ${lang} (one time)…`); if (await SR.install({ langs: [lang], processLocally: true })) st = "available"; }
+        ok = st === "available";
+      } else if (typeof SR.availableOnDevice === "function") {
+        let st = await SR.availableOnDevice(lang);
+        if (st === "downloadable" || st === "downloading") { toast(`Downloading the on-device speech pack for ${lang} (one time)…`); if (await SR.installOnDevice(lang)) st = "available"; }
+        ok = st === "available";
+      }
+    } catch {}
+    return (micLocal[lang] = ok);
+  }
+  var micHelpTa = null;
+  function micHelp(ta, why) {
+    micHelpTa = ta;
+    $("#toast")?.classList.remove("show");
+    const m = $("#modal");
+    m.innerHTML = `<div class="dialog mic-help">
+      <h2>\u{1F3A4} ${why === "brave" ? "Voice typing in Brave" : "Voice typing couldn't connect"}</h2>
+      <p>${why === "brave" ? "Brave includes the voice-typing feature but not Google's speech service behind it, so the browser can't turn speech into text by itself (it reports this as “no internet”)." : "The browser couldn't reach its speech service. This happens in Brave and other Chromium browsers, or when a VPN or firewall blocks Google's speech servers."} Two easy ways around it:</p>
+      <ol class="plain-steps">
+        <li><span class="ps-n">1</span><div><b>Use your Mac's dictation — works right here.</b> Click in the text box and press the <kbd>🌐 fn</kbd> key twice (or choose <i>Edit → Start Dictation</i>). Speak, then press <kbd>fn</kbd> again or click Done. If nothing happens, turn it on in <i>System Settings → Keyboard → Dictation</i>. On Apple-silicon Macs it runs on the device, so it's private and works offline.</div></li>
+        <li><span class="ps-n">2</span><div><b>Or open Astrolabe in Google Chrome</b>, where the 🎤 button works. Go to <code>chrome://extensions</code>, turn on Developer mode, click <i>Load unpacked</i> and pick the <code>astrolabe</code> folder. Each browser keeps its own data, so move people, journal and dreams with <i>Settings → Save config to file</i> here and <i>Load config</i> in Chrome.</div></li>
+      </ol>
+      <div class="dialog-actions"><span></span><div><button type="button" class="btn ghost" data-action="close-modal">Close</button> <button type="button" class="btn primary" data-action="mic-dictate">Put my cursor in the box</button></div></div>
+    </div>`;
+    m.classList.add("open");
+  }
+  async function micStart(ta, btn) {
+    if (!SR) { toast("Voice typing isn't available in this browser. Use Chrome."); return; }
+    if (mic) { const same = mic.ta === ta; micStop(); if (same) return; }
+    const local = await micLocalReady(micLang());
+    if (isBrave && !local) {
+      if (S.ui.micHelpSeen) { ta.focus(); toast("Brave can't do voice typing itself — press the 🌐 fn key twice to use Mac dictation."); }
+      else { S.ui.micHelpSeen = true; save(); micHelp(ta, "brave"); }
+      return;
+    }
+    // Ask for the microphone once so Chrome shows its permission prompt for the extension page.
+    try {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+      st.getTracks().forEach((t) => t.stop());
+    } catch (e) {
+      toast(e?.name === "NotAllowedError" ? MIC_ERR["not-allowed"] : e?.name === "NotFoundError" ? MIC_ERR["audio-capture"] : "Couldn't open the microphone: " + (e?.message || e));
+      return;
+    }
+    if (!ta.isConnected) { const fresh = btn.isConnected ? btn.previousElementSibling : null; if (!fresh) return; ta = fresh; }
+    const m = mic = { ta, btn, restarts: [], local };
+    try { micSession(m); } catch (e) { mic = null; toast("Couldn't start voice typing: " + e.message); return; }
+    btn.classList.add("on");
+    btn.title = "Listening… tap to stop";
+    btn.setAttribute("aria-pressed", "true");
+    ta.focus();
+    toast("\u{1F3A4} Listening — speak now. Tap the mic again (or press Esc) when you're done.");
+  }
+  function addMics(root = document) {
+    if (!SR) return;
+    for (const ta of root.querySelectorAll("#main textarea, #modal textarea")) {
+      if (ta.closest(".mic-wrap") || ta.dataset.nomic != null) continue;
+      const wrap = document.createElement("span");
+      wrap.className = "mic-wrap";
+      ta.replaceWith(wrap);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "mic-btn";
+      btn.dataset.action = "mic";
+      btn.title = "Speak instead of typing";
+      btn.setAttribute("aria-label", "Voice typing");
+      btn.setAttribute("aria-pressed", "false");
+      btn.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-2.07A7 7 0 0 0 19 12Z" fill="currentColor"/></svg>';
+      wrap.append(ta, btn);
+    }
+  }
   var QUICK_ONE = ["Give me a full reading of this chart", "What are their biggest strengths and blind spots?", "Love style and what they need in a partner", "Career, money and purpose", "How does the sidereal chart change the picture vs tropical?", "What do their numerology numbers say?", "Explain their Human Design: type, strategy and authority"];
   var QUICK_MANY = ["Where do we fit and where do we clash?", "How can we work together best?", "Romantic compatibility \u2014 honestly", "Communication: what goes wrong and how to fix it", "Friendship and fun together", "Living together / family life", "Money and shared values", "Numerology compatibility", "Human Design connection chart"];
   function currentThread() {
@@ -31356,6 +31813,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     return t;
   }
   async function send(text) {
+    micStop(true);
     text = (text || "").trim();
     if (!text || busy) return;
     if (!S.settings.apiKey) {
@@ -31455,6 +31913,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     </div>
   </form>`;
     m.classList.add("open");
+    setTimeout(() => addMics(m), 0);
     const f = $("#person-form");
     f.timeUnknown.addEventListener("change", () => {
       f.birthTime.disabled = f.timeUnknown.checked;
@@ -31519,6 +31978,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     setTimeout(() => f.name.focus(), 30);
   }
   function closeModal() {
+    if (mic?.ta.closest("#modal")) micStop(true);
     $("#modal").classList.remove("open");
     $("#modal").innerHTML = "";
   }
@@ -31542,6 +32002,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     <div class="dialog-actions"><span></span><div><button type="button" class="btn ghost" data-action="close-modal">Cancel</button> <button class="btn primary">Save</button></div></div>
   </form>`;
     m.classList.add("open");
+    setTimeout(() => addMics(m), 0);
     $("#settings-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const d = Object.fromEntries(new FormData(e.target));
@@ -31585,6 +32046,8 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
       return;
     }
     const id = el.dataset.id;
+    if (el.dataset.action === "mic") { micStart(el.previousElementSibling, el); return; }
+    if (el.dataset.action === "mic-dictate") { const t = micHelpTa; closeModal(); if (t?.isConnected) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } toast("Now press the 🌐 fn key twice and start talking."); return; }
     switch (el.dataset.action) {
       case "new-person":
         openPersonModal();
@@ -31699,6 +32162,62 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
         render();
         send(`Explain the life chapter ${person(id).name} is in right now \u2014 the numerology pinnacle, the Vedic dasha and the upcoming turning points like Saturn or Jupiter returns \u2014 and how to make the most of it.`);
         break;
+      case "ask-dreams":
+        S.ui.view = "ai";
+        ensureThread([id]);
+        render();
+        send(`Look at ${person(id).name}'s dream journal. What recurring symbols, feelings and themes do you see, how might they connect to what's happening in their chart and life (transits, the Moon on those nights, the journal moods), and what might the dreams be trying to say? Be honest where the evidence is thin.`);
+        break;
+      case "dtab":
+        S.ui.dtab = el.dataset.tab;
+        save();
+        render();
+        break;
+      case "dream-new":
+        S.ui.dform = true; S.ui.dedit = null;
+        render();
+        $("#dream-form textarea")?.focus();
+        break;
+      case "dream-cancel":
+        S.ui.dform = false; S.ui.dedit = null;
+        render();
+        break;
+      case "dream-edit":
+        S.ui.dedit = id; S.ui.dform = false;
+        render();
+        $("#dream-form")?.scrollIntoView({ block: "start", behavior: "smooth" });
+        break;
+      case "dream-del":
+        if (!confirm("Delete this dream and its interpretation?")) return;
+        S.dreams = S.dreams.filter((x) => x.id !== id);
+        await save();
+        render();
+        break;
+      case "toggle-feel":
+        el.classList.toggle("on");
+        break;
+      case "dream-interpret":
+        interpretDream(id);
+        break;
+      case "dream-stop":
+        dreamRun?.ctrl.abort();
+        break;
+      case "dream-listen": {
+        const box = document.querySelector(`#dr-${id} .dr-reading`);
+        if (box) readStart(readableBlocks(box), "Dream interpretation", "msg");
+        break;
+      }
+      case "dream-chat": {
+        const d = S.dreams.find((x) => x.id === id);
+        if (!d?.reading?.text) return;
+        const t = ensureThread([d.personId], `Dream: ${d.title || d.date}`);
+        t.messages.push({ role: "user", text: d.reading.prompt || dreamPrompt(d, person(d.personId)) }, { role: "assistant", text: d.reading.text, raw: [{ type: "text", text: d.reading.text }] });
+        S.ui.view = "ai";
+        await save();
+        render();
+        $("#prompt")?.focus();
+        break;
+      }
       case "ask-patterns":
         S.ui.view = "ai";
         ensureThread([id]);
@@ -31893,6 +32412,31 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     }
   });
   document.addEventListener("submit", async (e) => {
+    if (e.target.id !== "dream-form") return;
+    e.preventDefault();
+    const f = e.target, p = person(S.ui.selectedId);
+    if (!p) return;
+    const title = f.title.value.trim(), text = f.text.value.trim();
+    if (!text && !title) { toast("Write a few words about the dream first."); return; }
+    const date = f.date.value || dkey(new Date());
+    const rec = { title, text, date, life: f.life.value.trim(), feelings: [...f.querySelectorAll(".dfeel .act.on")].map((b2) => b2.dataset.feel), lucid: f.lucid.checked, nightmare: f.nightmare.checked, recurring: f.recurring.checked, clarity: +f.clarity.value, symbols: detectSymbols(title + " " + text), sky: dreamSky(p, date) };
+    const editId = f.dataset.edit, wantAI = !editId && f.interpret?.checked;
+    let id = editId;
+    if (editId) {
+      const ex = S.dreams.find((x) => x.id === editId);
+      if (ex) Object.assign(ex, rec, { edited: Date.now() });
+      toast("Dream updated.");
+    } else {
+      id = uid();
+      S.dreams.push({ id, personId: p.id, ...rec, created: Date.now() });
+      toast(`\u{1F319} Dream saved — with the sky that night.`);
+    }
+    S.ui.dform = false; S.ui.dedit = null; S.ui.dtab = "dreams";
+    await save();
+    render();
+    if (wantAI) interpretDream(id);
+  });
+  document.addEventListener("submit", async (e) => {
     if (e.target.id !== "journal-form") return;
     e.preventDefault();
     const f = e.target, p = person(S.ui.selectedId);
@@ -31921,6 +32465,14 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
   document.addEventListener("input", (e) => {
     const tk = e.target.dataset?.tts;
     if (tk && TTS_FMT[tk]) { const lab = document.querySelector(`[data-tts-val="${tk}"]`); if (lab) lab.textContent = TTS_FMT[tk](e.target.value); }
+    if (e.target.closest?.("#dream-form") && (e.target.name === "text" || e.target.name === "title")) {
+      const f = e.target.closest("#dream-form"), box = $("#dr-detected");
+      if (box) box.innerHTML = dreamSymChips(detectSymbols(f.title.value + " " + f.text.value), "Symbols spotted:");
+    }
+    if (e.target.id === "dsearch") {
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll("[data-dsym]").forEach((el) => { el.style.display = !q || el.dataset.dsym.includes(q) ? "" : "none"; });
+    }
     if (e.target.name === "mood" && e.target.closest("#journal-form")) {
       const f = e.target.closest("#journal-form");
       f.querySelectorAll(".mp").forEach((l) => l.classList.toggle("on", l.contains(e.target)));
@@ -31958,6 +32510,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     }
   });
   document.addEventListener("toggle", (e) => {
+    if (e.target?.dataset?.dream) { S.ui.dopen = e.target.open ? e.target.dataset.dream : null; return; }
     const g = e.target?.dataset?.guide;
     if (!g) return;
     S.ui.guides = { ...S.ui.guides || {}, [g]: e.target.open };
@@ -31966,6 +32519,7 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     save();
   }, true);
   document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && mic) { micStop(); return; }
     if (e.key === "Escape" && reader.state !== "idle" && !$("#modal").classList.contains("open")) readStop();
     if (e.key === "Escape" && $("#modal").classList.contains("open")) closeModal();
   });
@@ -31974,9 +32528,11 @@ Life timeline: age ${age.toFixed(1)}; Vedic dasha ${cd ? `${cd.lord} (${cd.start
     S.threads = await store.get("threads", []);
     S.journal = await store.get("journal", []);
     S.saved = await store.get("saved", []);
+    S.dreams = await store.get("dreams", []);
     Object.assign(TTS, await store.get("tts", {}));
     if (location.hash === "#today") S.ui.view = "today";
     if (location.hash === "#journal") { S.ui.view = "journal"; S.ui.jform = true; }
+    if (location.hash === "#dreams") { S.ui.view = "dreams"; S.ui.dform = true; }
     S.settings = { ...DEFAULT_SETTINGS, ...await store.get("settings", {}) };
     S.ui = { ...S.ui, ...await store.get("ui", {}) };
     if (!person(S.ui.selectedId)) S.ui.selectedId = S.profiles[0]?.id || null;
